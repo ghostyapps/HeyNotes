@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#6200EE</color>
+    <color name="purple_700">#3700B3</color>
+    <color name="teal_200">#03DAC5</color>
+    <color name="teal_700">#018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- DARK MODE COLORS -->
+
+    <!-- Başlık Arkaplanı: Koyu Gri (Neredeyse Siyah) -->
+    <color name="header_background">#121212</color>
+
+    <!-- İçerik Alanı: Biraz daha açık bir koyu gri (Kart efekti için) -->
+    <color name="background_color">#1E1E1E</color>
+
+    <!-- Metin Rengi: Beyazımsı Gri (Göz yormaması için tam beyaz değil) -->
+    <color name="text_color">#E0E0E0</color>
+
+    <!-- İkincil Metin: Orta Gri -->
+    <color name="text_color_alt">#A0A0A0</color>
+
+    <!-- Toolbar/Pill Arkaplanı: İçerikten biraz daha açık -->
+    <color name="toolbar_background">#2C2C2C</color>
+
+    <color name="accent_color">#121212</color>
+
+    <!-- NOT RENKLERİ (Gece modunda çok parlamaması için biraz pastel bırakıldı) -->
+    <color name="note_gray">#757575</color>
+    <color name="note_dark_gray">#424242</color>
+    <color name="note_red">#E57373</color>
+    <color name="note_orange">#FFB74D</color>
+    <color name="note_yellow">#FFF176</color>
+    <color name="note_green">#81C784</color>
+    <color name="note_blue">#64B5F6</color>
+    <color name="note_purple">#BA68C8</color>
+    <color name="note_pink">#F06292</color>
+</resources>

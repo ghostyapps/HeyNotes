@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- gravity="center" sayesinde imageview ne kadar büyük olursa olsun nokta ortada ve küçük kalır -->
+    <item android:gravity="center">
+        <shape android:shape="oval">
+            <!-- Varsayılan Açık Gri -->
+            <solid android:color="#BDBDBD"/>
+            <!-- Küçük Boyut -->
+            <size android:width="8dp" android:height="8dp"/>
+        </shape>
+    </item>
+</layer-list>

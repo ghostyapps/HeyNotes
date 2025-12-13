@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">HeyNotes</string>
+    <string name="app_version">v0.1.2</string>
+
+    <string name="app_description">HeyNotes is your minimal, distraction-free space for thoughts, ideas, and plans.
+     It is designed to be fast, local and private when needed. All notes you create can be located under Internal
+        Storage > Documents > HeyNotes. This allows you to bring in your previous .md files from any other app you currently use,
+        and export them from this app when you need it.</string>
+
+    <!-- FIXED: Added backslash to phone\'s -->
+    <string name="app_privacy_info">Secure Folders are hidden from your phone\'s File Manager and exist in a protected storage
+        area accessible only by this app. Be careful: If you delete a Secure Folder, all notes inside it are permanently
+        deleted and cannot be recovered. Also keep in mind that each secure folder is separately protected by a unique PIN.</string>
+
+    <string name="app_github_link">https://github.com/GhostyApps/HeyNotes</string>
+
+    <!-- UI Strings -->
+    <string name="important_warning">⚠️ Important Privacy Info</string>
+    <string name="secure_instructions">1. Tap the + button and select New Folder.\n2. Select the Black Color dot (it has a lock icon).\n3. Set your 4-digit PIN.</string>
+</resources>

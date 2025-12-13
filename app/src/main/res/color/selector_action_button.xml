@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- When pressed, turn Purple -->
+    <item android:state_pressed="true" android:color="@color/red" />
+    <!-- Default state: Dark Text -->
+    <item android:color="@color/text_color" />
+</selector>

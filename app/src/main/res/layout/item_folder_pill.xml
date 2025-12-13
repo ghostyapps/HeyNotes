@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/cardContainer"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginEnd="8dp"
+    android:layout_marginTop="4dp"
+    android:layout_marginBottom="8dp"
+    app:cardCornerRadius="50dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp"
+    app:strokeColor="@android:color/transparent">
+    <!-- Stroke width/color will be set programmatically -->
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
+
+        <!-- Folder Icon -->
+        <ImageView
+            android:id="@+id/ivIcon"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@drawable/icon_folder_dot"
+            android:layout_marginEnd="8dp"
+            app:tint="#FFFFFF" />
+
+        <!-- Name -->
+        <TextView
+            android:id="@+id/tvName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Folder"
+            android:textColor="#FFFFFF"
+            android:fontFamily="@font/productsans_bold"
+            android:textSize="14sp" />
+
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

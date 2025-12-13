@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:gravity="center">
+        <shape android:shape="oval">
+            <!-- Varsayılan Koyu Gri -->
+            <solid android:color="#616161"/>
+            <!-- Biraz Daha Büyük Boyut -->
+            <size android:width="14dp" android:height="14dp"/>
+        </shape>
+    </item>
+</layer-list>

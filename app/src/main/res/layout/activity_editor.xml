@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/header_background"
+    tools:context=".EditorActivity">
+
+    <!-- HEADER SECTION (Gray) -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/headerSection"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="140dp"
+        android:background="@color/header_background"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:paddingTop="48dp"
+        android:paddingBottom="24dp">
+
+        <!-- TITLE INPUT -->
+        <EditText
+            android:id="@+id/etTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:background="@null"
+            android:hint="Title"
+            android:textColorHint="@color/text_color_alt"
+            android:textSize="32sp"
+            android:textColor="@color/text_color"
+            android:fontFamily="@font/productsans_bold"
+            android:inputType="textCapSentences|textMultiLine"
+            android:maxLines="2"
+            android:layout_marginEnd="16dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/ivNoteColor"/>
+
+        <!-- NEW: COLOR DOT -->
+        <ImageView
+            android:id="@+id/ivNoteColor"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:src="@drawable/shape_circle"
+            android:elevation="4dp"
+            app:tint="@color/text_color_alt"
+            app:layout_constraintBottom_toBottomOf="@+id/etTitle"
+            app:layout_constraintTop_toTopOf="@+id/etTitle"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- BODY SECTION (White Card) -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@drawable/bg_content_card">
+
+        <!-- VIEW MODE: The Reader -->
+        <ScrollView
+            android:id="@+id/scrollViewReader"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:visibility="gone"
+            android:padding="24dp"
+            android:clipToPadding="false"
+            app:layout_constraintBottom_toTopOf="@+id/bottomBar"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <TextView
+                android:id="@+id/tvReader"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="18sp"
+                android:lineSpacingExtra="6dp"
+                android:textColor="@color/text_color"
+                android:fontFamily="@font/productsans_medium" />
+        </ScrollView>
+
+        <!-- EDIT MODE: The Writer -->
+        <EditText
+            android:id="@+id/etContent"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:background="@null"
+            android:gravity="top|start"
+            android:hint="Start typing..."
+            android:padding="24dp"
+            android:inputType="textMultiLine|textNoSuggestions"
+            android:textSize="18sp"
+            android:textColor="@color/text_color"
+            android:fontFamily="@font/productsans_medium"
+            android:lineSpacingExtra="6dp"
+            app:layout_constraintBottom_toTopOf="@+id/bottomBar"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- Bottom Bar -->
+        <LinearLayout
+            android:id="@+id/bottomBar"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:background="@drawable/bg_floating_toolbar"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:elevation="12dp"
+            android:layout_marginBottom="32dp"
+            android:layout_marginStart="48dp"
+            android:layout_marginEnd="48dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <!-- BOLD -->
+            <TextView
+                android:id="@+id/btnBold"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="match_parent"
+                android:text="B"
+                android:textSize="20sp"
+                android:gravity="center"
+                android:fontFamily="@font/productsans_bold"
+                android:clickable="true"
+                android:focusable="true"
+                android:textColor="@color/selector_action_button" />
+
+            <!-- HEADER -->
+            <TextView
+                android:id="@+id/btnHeader"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="match_parent"
+                android:text="H1"
+                android:textSize="20sp"
+                android:gravity="center"
+                android:fontFamily="@font/productsans_bold"
+                android:clickable="true"
+                android:focusable="true"
+                android:textColor="@color/selector_action_button" />
+
+            <!-- LIST -->
+            <TextView
+                android:id="@+id/btnList"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="match_parent"
+                android:text="•"
+                android:textSize="28sp"
+                android:gravity="center"
+                android:fontFamily="@font/productsans_bold"
+                android:clickable="true"
+                android:focusable="true"
+                android:textColor="@color/selector_action_button" />
+
+            <!-- DONE -->
+            <TextView
+                android:id="@+id/btnSave"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="match_parent"
+                android:text="Done"
+                android:textSize="18sp"
+                android:gravity="center"
+                android:fontFamily="@font/productsans_bold"
+                android:clickable="true"
+                android:focusable="true"
+                android:textColor="@color/selector_done_button" />
+
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</LinearLayout>

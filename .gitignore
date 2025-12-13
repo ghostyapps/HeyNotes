@@ -1,0 +1,60 @@
+## Build folders
+/build
+/.cxx
+/captures
+/externalNativeBuild
+/intermediates
+/generated
+/out
+
+## Local configuration and settings
+/.gradle
+/.idea/
+/.idea/libraries/
+*.iml
+*.iws
+*.ipr
+local.properties
+
+## Android Studio files
+.DS_Store
+.idea/caches/
+.idea/libraries/
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/modules.xml
+.idea/codeStyles/
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+.idea/inspectionProfiles/
+
+# Keystore files (signing keys, MUST be ignored for security)
+*.jks
+*.keystore
+
+# External dependencies (if any)
+/libs
+
+# Test coverage results
+/jacoco
+
+# Crashlytics/Firebase files
+/crashlytics-build-id.txt
+/fabric-build-id.txt
+
+# Mevcutların altına bunları ekle veya kontrol et:
+
+# APK dosyalarını engelle
+*.apk
+*.aab
+
+# Log dosyalarını engelle
+*.log
+.kotlin/
+
+# Release klasörlerini engelle
+/app/release/
+/release/
+
+# IDE ayarları
+.idea/
