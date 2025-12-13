@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="200dp"
+    android:layout_height="wrap_content"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="8dp"
+    app:cardBackgroundColor="@color/toolbar_background">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
+
+        <!-- Başlık -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Theme"
+            android:textSize="14sp"
+            android:textColor="@color/text_color_alt"
+            android:fontFamily="@font/productsans_medium"
+            android:paddingStart="20dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"/>
+
+        <!-- System (DİKKAT: Burası TextView olmalı) -->
+        <TextView
+            android:id="@+id/menuThemeSystem"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="System Default"
+            android:textSize="16sp"
+            android:textColor="@color/text_color"
+            android:fontFamily="@font/productsans_medium"
+            android:padding="12dp"
+            android:paddingStart="20dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"/>
+
+        <!-- Light -->
+        <TextView
+            android:id="@+id/menuThemeLight"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Light Mode"
+            android:textSize="16sp"
+            android:textColor="@color/text_color"
+            android:fontFamily="@font/productsans_medium"
+            android:padding="12dp"
+            android:paddingStart="20dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"/>
+
+        <!-- Dark -->
+        <TextView
+            android:id="@+id/menuThemeDark"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Dark Mode"
+            android:textSize="16sp"
+            android:textColor="@color/text_color"
+            android:fontFamily="@font/productsans_medium"
+            android:padding="12dp"
+            android:paddingStart="20dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"/>
+
+        <!-- Ayraç -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/text_color_alt"
+            android:alpha="0.2"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp"/>
+
+        <!-- About -->
+        <TextView
+            android:id="@+id/menuAbout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="About"
+            android:textSize="16sp"
+            android:textColor="@color/text_color"
+            android:fontFamily="@font/productsans_medium"
+            android:padding="12dp"
+            android:paddingStart="20dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"/>
+
+    </LinearLayout>
+</androidx.cardview.widget.CardView>

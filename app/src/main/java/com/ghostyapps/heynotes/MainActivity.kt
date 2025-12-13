@@ -25,6 +25,7 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope // <--- BU ÇOK ÖNEMLİ (PİL TASARRUFU İÇİN)
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -38,12 +39,14 @@ import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Calendar
 import java.util.Collections
+import androidx.lifecycle.lifecycleScope
+
 
 class MainActivity : AppCompatActivity() {
 
@@ -77,7 +80,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvGreeting: TextView
     private lateinit var tvSubtitle: TextView
     private lateinit var recyclerNotes: RecyclerView
-    private lateinit var recyclerFolders: RecyclerView // Global Tanımlama
+    private lateinit var recyclerFolders: RecyclerView
     private lateinit var fabCreate: FloatingActionButton
 
     // FAB Menu Variables
@@ -87,9 +90,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnNewFolder: View
 
     override fun onCreate(savedInstanceState: Bundle?) {
+
+        // --- TEMA YÜKLEME (EN ÜSTE) ---
+        val prefs = getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        val themeMode = prefs.getInt("theme_mode", androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(themeMode)
+        // ------------------------------
+
         super.onCreate(savedInstanceState)
 
-        // Status Bar
+        // Status Bar Optimization
         window.statusBarColor = resources.getColor(R.color.header_background, theme)
         val nightModeFlags = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
         if (nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
@@ -120,6 +130,8 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
         userName = prefs.getString("user_name", "User") ?: "User"
 
+        // Sadece initialized ise ve ekrana dönüldüyse yükle
+        // Bu gereksiz yüklemeleri engeller
         if (::localServiceHelper.isInitialized) loadContent()
     }
 
@@ -150,18 +162,16 @@ class MainActivity : AppCompatActivity() {
         btnNewNote = findViewById(R.id.btnNewNote)
         btnNewFolder = findViewById(R.id.btnNewFolder)
 
-        // About Page
+        // About Page YERİNE Settings Menu
         findViewById<ImageView>(R.id.ivHeaderGraphic).setOnClickListener {
-            startActivity(Intent(this, AboutActivity::class.java))
+            showSettingsMenu(it) // <--- DEĞİŞTİ
         }
 
-        // Toggle Grid/List
         findViewById<ImageView>(R.id.btnToggleView).setOnClickListener {
             isGridMode = !isGridMode
             updateLayoutManager()
         }
 
-        // Edit Name
         tvAppTitle.setOnClickListener {
             val isRoot = (!isDriveMode && currentLocalDir?.name == "HeyNotes") || (isDriveMode && currentDriveId == rootDriveId)
             if (isRoot) {
@@ -171,16 +181,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // FAB Click
         fabCreate.setOnClickListener {
-            if (isSelectionMode) {
-                showDeleteConfirmation()
-            } else {
-                toggleFabMenu()
-            }
+            if (isSelectionMode) showDeleteConfirmation() else toggleFabMenu()
         }
 
-        // Menu Actions
         fabOverlay.setOnClickListener { if (isFabMenuOpen) toggleFabMenu() }
         btnNewNote.setOnClickListener { toggleFabMenu(); openEditor(null) }
         btnNewFolder.setOnClickListener { toggleFabMenu(); showCreateFolderDialog() }
@@ -207,7 +211,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupAdapters() {
-        // 1. Folders
         folderAdapter = FolderPillAdapter(
             onItemClick = { folder, view ->
                 if (isSelectionMode) {
@@ -230,11 +233,10 @@ class MainActivity : AppCompatActivity() {
             }
         )
 
-        recyclerFolders = findViewById(R.id.recyclerFolders) // XML'de bu ID olmalı!
+        recyclerFolders = findViewById(R.id.recyclerFolders)
         recyclerFolders.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         recyclerFolders.adapter = folderAdapter
 
-        // 2. Notes
         notesAdapter = NotesAdapter(
             onItemClick = { item ->
                 if (isSelectionMode) toggleSelection(item)
@@ -296,25 +298,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // --- CONTENT LOADING ---
+    // --- OPTIMIZED CONTENT LOADING ---
     private fun loadContent() {
         isSelectionMode = false
         updateFabIcon()
 
         val isRoot = (!isDriveMode && currentLocalDir?.name == "HeyNotes") || (isDriveMode && currentDriveId == rootDriveId)
 
+        // HEADER UPDATE (UI THREAD - HIZLI)
         if (isRoot) {
             val greeting = getGreeting()
             tvAppTitle.text = "Hey, $userName"
             tvGreeting.text = greeting
             tvGreeting.visibility = View.VISIBLE
-
-            if (!isDriveMode) {
-                val totalCount = localServiceHelper.getTotalNoteCount()
-                tvSubtitle.text = "You have $totalCount Notes in total."
-            } else {
-                tvSubtitle.text = "Google Drive Storage"
-            }
+            // Alt başlık veriler gelince güncellenecek
+            tvSubtitle.text = "Loading..."
         } else {
             val name = if (isDriveMode) driveBreadcrumbs.last() else currentLocalDir?.name ?: ""
             tvAppTitle.text = name
@@ -322,15 +320,71 @@ class MainActivity : AppCompatActivity() {
             tvSubtitle.text = if (isDriveMode) "Drive Folder" else "Local Folder"
         }
 
-        if (isDriveMode) {
-            if (currentDriveId == null) return
-            CoroutineScope(Dispatchers.Main).launch {
+        // BACKGROUND TASK START (lifecycleScope: Pil Tasarrufu)
+        lifecycleScope.launch(Dispatchers.IO) {
+
+            // 1. DATA FETCHING (HEAVY WORK)
+            val rawItems: List<NoteItem>
+            var totalNoteCount = 0
+
+            if (isDriveMode) {
+                if (currentDriveId == null) return@launch
                 val files = driveServiceHelper?.listFiles(currentDriveId!!) ?: emptyList()
-                processItems(files.map { NoteItem(it.name, it.mimeType.contains("folder"), it.id) })
+                rawItems = files.map { NoteItem(it.name, it.mimeType.contains("folder"), it.id) }
+                // Drive Recursive count is hard, keeping it simple for now
+            } else {
+                if (currentLocalDir == null) return@launch
+
+                // Suspend function call (Optimized in LocalServiceHelper)
+                rawItems = localServiceHelper.listItems(currentLocalDir!!)
+
+                // Only count total if at root (Heavy Operation)
+                if (isRoot) {
+                    totalNoteCount = localServiceHelper.getTotalNoteCount()
+                }
             }
-        } else {
-            if (currentLocalDir == null) return
-            processItems(localServiceHelper.listItems(currentLocalDir!!))
+
+            // 2. DATA PROCESSING (Colors, Security)
+            val processedItems = rawItems.map {
+                it.copy(
+                    color = colorStorage.getColor(it.id),
+                    isLocked = securityStorage.isLocked(it.id)
+                )
+            }
+
+            val newSubFolders = processedItems.filter { it.isFolder }.toMutableList()
+            val newNotes = processedItems.filter { !it.isFolder }.toMutableList()
+
+            // 3. UI UPDATE (Switch back to Main Thread)
+            withContext(Dispatchers.Main) {
+                // Build Pills
+                val pillList = mutableListOf<NoteItem>()
+                pillList.add(NoteItem("Main", true, "ROOT", color = Color.parseColor("#BDBDBD"), isActive = isRoot))
+
+                if (!isRoot) {
+                    val currentName = if (isDriveMode) driveBreadcrumbs.last() else currentLocalDir?.name ?: "Folder"
+                    val currentId = if (isDriveMode) currentDriveId!! else currentLocalDir!!.absolutePath
+                    val currentColor = colorStorage.getColor(currentId) ?: Color.parseColor("#616161")
+                    pillList.add(NoteItem(currentName, true, currentId, color = currentColor, isActive = true))
+                }
+
+                newSubFolders.forEach { it.isActive = false }
+                pillList.addAll(newSubFolders)
+
+                // Update Lists
+                currentFolders = pillList
+                currentNotes = newNotes
+                folderAdapter.submitList(currentFolders)
+                notesAdapter.submitList(currentNotes)
+
+                // Update Subtitle with Calculated Count
+                if (isRoot) {
+                    if (!isDriveMode) tvSubtitle.text = "You have $totalNoteCount Notes in total."
+                    else tvSubtitle.text = "Google Drive Storage"
+                } else {
+                    tvSubtitle.text = "${currentNotes.size} Notes"
+                }
+            }
         }
     }
 
@@ -341,42 +395,6 @@ class MainActivity : AppCompatActivity() {
             in 0..11 -> "Good morning."
             in 12..17 -> "Good afternoon."
             else -> "Good evening."
-        }
-    }
-
-    private fun processItems(items: List<NoteItem>) {
-        val mappedItems = items.map {
-            it.copy(
-                color = colorStorage.getColor(it.id),
-                isLocked = securityStorage.isLocked(it.id)
-            )
-        }
-
-        val subFolders = mappedItems.filter { it.isFolder }.toMutableList()
-        currentNotes = mappedItems.filter { !it.isFolder }.toMutableList()
-
-        val pillList = mutableListOf<NoteItem>()
-        val isRoot = (!isDriveMode && currentLocalDir?.name == "HeyNotes") || (isDriveMode && currentDriveId == rootDriveId)
-
-        pillList.add(NoteItem("Main", true, "ROOT", color = Color.parseColor("#BDBDBD"), isActive = isRoot))
-
-        if (!isRoot) {
-            val currentName = if (isDriveMode) driveBreadcrumbs.last() else currentLocalDir?.name ?: "Folder"
-            val currentId = if (isDriveMode) currentDriveId!! else currentLocalDir!!.absolutePath
-            val currentColor = colorStorage.getColor(currentId) ?: Color.parseColor("#616161")
-
-            pillList.add(NoteItem(currentName, true, currentId, color = currentColor, isActive = true))
-        }
-
-        subFolders.forEach { it.isActive = false }
-        pillList.addAll(subFolders)
-
-        currentFolders = pillList
-        folderAdapter.submitList(pillList)
-        notesAdapter.submitList(currentNotes)
-
-        if (!isRoot) {
-            tvSubtitle.text = "${currentNotes.size} Notes"
         }
     }
 
@@ -397,7 +415,6 @@ class MainActivity : AppCompatActivity() {
     private fun checkSelectionState() {
         val anyNotes = currentNotes.any { it.isSelected }
         val anyFolders = currentFolders.any { it.isSelected }
-
         if (!anyNotes && !anyFolders) {
             isSelectionMode = false
             updateFabIcon()
@@ -433,23 +450,15 @@ class MainActivity : AppCompatActivity() {
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
 
         btnDelete.setOnClickListener {
-            // --- GÜVENLİK KONTROLÜ BAŞLANGICI ---
-
-            // Seçili olanlar arasında KİLİTLİ olan bir klasör var mı?
             val lockedFolder = currentFolders.find { it.isSelected && it.isLocked }
-
             if (lockedFolder != null) {
-                // Kilitli klasör bulundu! Şifre sor.
                 dialog.dismiss()
                 showPinDialogForDeletion(lockedFolder)
             } else {
-                // Kilitli bir şey yok, direkt sil.
                 deleteSelectedItems()
                 dialog.dismiss()
             }
-            // --- GÜVENLİK KONTROLÜ SONU ---
         }
-
         btnCancel.setOnClickListener { dialog.dismiss() }
         dialog.show()
     }
@@ -464,10 +473,9 @@ class MainActivity : AppCompatActivity() {
 
         tvTitle.text = "Security Check"
         tvMessage.visibility = View.VISIBLE
-        // Hangi klasör için şifre istediğimizi belirtelim
         tvMessage.text = "Enter PIN for '${lockedItem.name}' to confirm deletion."
         btnConfirm.text = "Delete"
-        btnConfirm.setTextColor(Color.parseColor("#D32F2F")) // Butonu kırmızı yapalım (Tehlikeli işlem)
+        btnConfirm.setTextColor(Color.parseColor("#D32F2F"))
         etPin.hint = "PIN"
 
         val dialog = AlertDialog.Builder(this).setView(dialogView).create()
@@ -475,10 +483,7 @@ class MainActivity : AppCompatActivity() {
 
         btnConfirm.setOnClickListener {
             val pin = etPin.text.toString()
-
-            // Şifreyi kontrol et
             if (securityStorage.checkPassword(lockedItem.id, pin)) {
-                // Şifre doğru! Silme işlemini başlat.
                 deleteSelectedItems()
                 dialog.dismiss()
             } else {
@@ -486,9 +491,7 @@ class MainActivity : AppCompatActivity() {
                 etPin.setText("")
             }
         }
-
         btnCancel.setOnClickListener { dialog.dismiss() }
-
         dialog.setOnShowListener {
             etPin.requestFocus()
             val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
@@ -502,16 +505,23 @@ class MainActivity : AppCompatActivity() {
         val foldersToDelete = currentFolders.filter { it.isSelected }
         val allItems = notesToDelete + foldersToDelete
 
-        CoroutineScope(Dispatchers.Main).launch {
+        // DÜZELTME: lifecycleScope kullanıldı
+        lifecycleScope.launch(Dispatchers.IO) {
             allItems.forEach { item ->
-                if (isDriveMode) driveServiceHelper?.deleteFile(item.id) else localServiceHelper.deleteFile(item.id)
+                if (isDriveMode) {
+                    driveServiceHelper?.deleteFile(item.id)
+                } else {
+                    localServiceHelper.deleteFile(item.id)
+                }
             }
-            loadContent()
-            Toast.makeText(this@MainActivity, "Deleted.", Toast.LENGTH_SHORT).show()
+            // UI güncellemesi için Ana Thread
+            withContext(Dispatchers.Main) {
+                loadContent()
+                Toast.makeText(this@MainActivity, "Deleted.", Toast.LENGTH_SHORT).show()
+            }
         }
     }
-
-    // --- DIALOGS ---
+    // --- DIALOGS (Create, Color, Lock, Unlock) ---
     private fun showCreateFolderDialog() {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_create_folder, null)
         val etFolderName = dialogView.findViewById<EditText>(R.id.etFolderName)
@@ -536,6 +546,7 @@ class MainActivity : AppCompatActivity() {
             val bg = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.shape_circle)?.mutate()
             bg?.setTint(Color.parseColor(hex))
             dot.background = bg
+
             dot.setColorFilter(Color.WHITE)
             dot.tag = hex
 
@@ -637,55 +648,51 @@ class MainActivity : AppCompatActivity() {
                     securityStorage.setPassword(id, "")
                 }
             }
-            loadContent()
-            Toast.makeText(this, "Secure Folder Created", Toast.LENGTH_SHORT).show()
+
+            runOnUiThread {
+                loadContent()
+                Toast.makeText(this, "Secure Folder Created", Toast.LENGTH_SHORT).show()
+            }
         }
 
-        if (isDriveMode) {
-            CoroutineScope(Dispatchers.Main).launch {
+        // DÜZELTME: lifecycleScope kullanıldı
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (isDriveMode) {
                 val newId = driveServiceHelper?.createFolder(currentDriveId!!, name)
                 if (newId != null) finishLocking(newId)
+            } else {
+                localServiceHelper.createFolder(currentLocalDir!!, name)
+                val newFolder = File(currentLocalDir, name)
+                finishLocking(newFolder.absolutePath)
             }
-        } else {
-            localServiceHelper.createFolder(currentLocalDir!!, name)
-            val newFolder = File(currentLocalDir, name)
-            finishLocking(newFolder.absolutePath)
         }
     }
-
     private fun createFolder(name: String, colorHex: String?) {
         val finishCreation = { id: String ->
             if (colorHex != null) colorStorage.saveColor(id, colorHex)
-            loadContent()
+            runOnUiThread { loadContent() }
         }
 
-        if (isDriveMode) {
-            CoroutineScope(Dispatchers.Main).launch {
+        // DÜZELTME: lifecycleScope kullanıldı
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (isDriveMode) {
                 val newId = driveServiceHelper?.createFolder(currentDriveId!!, name)
                 if (newId != null) finishCreation(newId)
+            } else {
+                localServiceHelper.createFolder(currentLocalDir!!, name)
+                val newFolder = File(currentLocalDir, name)
+                finishCreation(newFolder.absolutePath)
             }
-        } else {
-            localServiceHelper.createFolder(currentLocalDir!!, name)
-            val newFolder = File(currentLocalDir, name)
-            finishCreation(newFolder.absolutePath)
         }
     }
-
     private fun showColorPopup(item: NoteItem, anchorView: View) {
         val inflater = LayoutInflater.from(this)
         val popupView = inflater.inflate(R.layout.popup_color_picker, null)
         val container = popupView.findViewById<LinearLayout>(R.id.colorContainer)
 
-        // Pop-up ayarları
-        val popupWindow = PopupWindow(
-            popupView,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            true // Odaklanabilir (dışarı tıklayınca kapanır)
-        )
+        val popupWindow = PopupWindow(popupView, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true)
         popupWindow.elevation = 10f
 
-        // --- KİLİT BUTONU ---
         if (item.isFolder && item.id != "ROOT") {
             val lockBtn = ImageView(this)
             val size = (24 * resources.displayMetrics.density).toInt()
@@ -707,7 +714,6 @@ class MainActivity : AppCompatActivity() {
             container.addView(lockBtn)
         }
 
-        // --- RENKLER ---
         val colors = listOf("#BDBDBD", "#616161", "#EF5350", "#FFA726", "#FFEE58", "#66BB6A", "#42A5F5", "#AB47BC", "#EC407A")
 
         for (colorHex in colors) {
@@ -730,27 +736,15 @@ class MainActivity : AppCompatActivity() {
             container.addView(dot)
         }
 
-        // --- KONUMLANDIRMA DÜZELTMESİ ---
-
-        // 1. Önce pop-up'ın boyutunu hesapla (Ekrana çizilmeden önce)
         popupView.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
         val popupHeight = popupView.measuredHeight
-
-        // 2. Tıklanan ikonun ekrandaki yerini bul
         val location = IntArray(2)
         anchorView.getLocationOnScreen(location)
-        // location[0] = X (Sol), location[1] = Y (Üst)
-
-        // 3. Konumu Hesapla
-        // X: İkonun biraz sağına (ikon genişliği + 20px)
         val x = location[0] + anchorView.width / 2
-
-        // Y: İkonun dikey olarak ortasına gelecek şekilde (İkon Y - PopUp Yarisı + İkon Yarısı)
         val y = location[1] - (popupHeight / 2) + (anchorView.height / 2)
-
-        // 4. Göster (NO_GRAVITY önemli, yoksa ekranın sağına/soluna yapışır)
         popupWindow.showAtLocation(anchorView, Gravity.NO_GRAVITY, x, y)
     }
+
     private fun showLockSetupDialog(item: NoteItem) {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_pin_entry, null)
         val tvTitle = dialogView.findViewById<TextView>(R.id.tvTitle)
@@ -773,31 +767,41 @@ class MainActivity : AppCompatActivity() {
 
             if (pin.isNotEmpty()) {
                 if (pin.length >= 4) {
-                    if (!isDriveMode) {
-                        val newPath = localServiceHelper.moveFolderToPrivate(item.name)
-                        if (newPath != null) {
-                            securityStorage.setPassword(newPath, pin)
-                            securityStorage.setPassword(item.id, "")
+                    // Lock Logic
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        if (!isDriveMode) {
+                            val newPath = localServiceHelper.moveFolderToPrivate(item.name)
+                            if (newPath != null) {
+                                securityStorage.setPassword(newPath, pin)
+                                securityStorage.setPassword(item.id, "")
+                            } else {
+                                securityStorage.setPassword(item.id, pin)
+                            }
                         } else {
                             securityStorage.setPassword(item.id, pin)
                         }
-                    } else {
-                        securityStorage.setPassword(item.id, pin)
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@MainActivity, "Folder Locked", Toast.LENGTH_SHORT).show()
+                            loadContent()
+                            dialog.dismiss()
+                        }
                     }
-                    Toast.makeText(this, "Folder Locked", Toast.LENGTH_SHORT).show()
-                    loadContent()
-                    dialog.dismiss()
                 } else {
                     Toast.makeText(this, "PIN must be at least 4 digits", Toast.LENGTH_SHORT).show()
                 }
             } else {
-                if (!isDriveMode) {
-                    val newPath = localServiceHelper.moveFolderToPublic(item.name)
+                // Unlock Logic
+                lifecycleScope.launch(Dispatchers.IO) {
+                    if (!isDriveMode) {
+                        val newPath = localServiceHelper.moveFolderToPublic(item.name)
+                    }
+                    securityStorage.setPassword(item.id, "")
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Folder Unlocked", Toast.LENGTH_SHORT).show()
+                        loadContent()
+                        dialog.dismiss()
+                    }
                 }
-                securityStorage.setPassword(item.id, "")
-                Toast.makeText(this, "Folder Unlocked", Toast.LENGTH_SHORT).show()
-                loadContent()
-                dialog.dismiss()
             }
         }
         btnCancel.setOnClickListener { dialog.dismiss() }
@@ -854,35 +858,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     // --- STANDARD UI LOGIC ---
-    private fun showFabMenu(anchorView: View) {
-        val inflater = LayoutInflater.from(this)
-        val popupView = inflater.inflate(R.layout.popup_fab_menu, null)
-        val popupWindow = PopupWindow(popupView, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true)
-        popupWindow.elevation = 10f
-
-        val menuNewNote = popupView.findViewById<LinearLayout>(R.id.menuNewNote)
-        val menuNewFolder = popupView.findViewById<LinearLayout>(R.id.menuNewFolder)
-
-        menuNewNote.setOnClickListener { popupWindow.dismiss(); openEditor(null) }
-        menuNewFolder.setOnClickListener { popupWindow.dismiss(); showCreateFolderDialog() }
-
-        val xFromRight = (74 * resources.displayMetrics.density).toInt()
-        val yFromBottom = (96 * resources.displayMetrics.density).toInt()
-        popupWindow.showAtLocation(anchorView, Gravity.BOTTOM or Gravity.END, xFromRight, yFromBottom)
-    }
-
     private fun openEditor(item: NoteItem?) {
         val intent = Intent(this, EditorActivity::class.java)
         if (item != null) {
             intent.putExtra("NOTE_TITLE", item.name)
             intent.putExtra("NOTE_ID", item.id)
-            if (!isDriveMode) {
-                val content = localServiceHelper.readFile(item.id)
-                intent.putExtra("NOTE_CONTENT", content)
-                editorLauncher.launch(intent)
-            } else {
-                CoroutineScope(Dispatchers.Main).launch {
-                    val content = driveServiceHelper?.readFile(item.id) ?: ""
+
+            // File reading should be in background
+            lifecycleScope.launch(Dispatchers.IO) {
+                val content = if (!isDriveMode) {
+                    localServiceHelper.readFile(item.id)
+                } else {
+                    driveServiceHelper?.readFile(item.id) ?: ""
+                }
+                withContext(Dispatchers.Main) {
                     intent.putExtra("NOTE_CONTENT", content)
                     editorLauncher.launch(intent)
                 }
@@ -910,38 +899,54 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun deleteSingleFile(id: String) {
-        CoroutineScope(Dispatchers.Main).launch {
-            if (isDriveMode) driveServiceHelper?.deleteFile(id) else localServiceHelper.deleteFile(id)
-            loadContent()
-            Toast.makeText(this@MainActivity, "Discarded.", Toast.LENGTH_SHORT).show()
+        // CoroutineScope yerine lifecycleScope kullanıyoruz
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (isDriveMode) {
+                driveServiceHelper?.deleteFile(id)
+            } else {
+                localServiceHelper.deleteFile(id)
+            }
+
+            // UI güncellemesi için Ana Thread'e dön
+            withContext(Dispatchers.Main) {
+                loadContent()
+                Toast.makeText(this@MainActivity, "Discarded.", Toast.LENGTH_SHORT).show()
+            }
         }
     }
-
     private fun saveNote(title: String, content: String, originalId: String?, colorHex: String?) {
-        CoroutineScope(Dispatchers.Main).launch {
+        // CoroutineScope yerine lifecycleScope kullanıyoruz
+        lifecycleScope.launch(Dispatchers.IO) {
             if (isDriveMode) {
                 if (originalId != null) {
+                    // Güncelleme
                     driveServiceHelper?.updateFile(originalId, title, content)
                     if (colorHex != null) colorStorage.saveColor(originalId, colorHex)
                 } else {
+                    // Yeni Oluşturma
                     val newId = driveServiceHelper?.createNote(currentDriveId!!, title, content)
                     if (newId != null && colorHex != null) colorStorage.saveColor(newId, colorHex)
                 }
             } else {
                 if (originalId != null) {
+                    // Güncelleme
                     localServiceHelper.updateNote(originalId, title, content)
                     if (colorHex != null) colorStorage.saveColor(originalId, colorHex)
                 } else {
+                    // Yeni Oluşturma
                     localServiceHelper.saveNote(currentLocalDir!!, title, content)
                     val safeTitle = if (title.endsWith(".md")) title else "$title.md"
                     val newPath = File(currentLocalDir, safeTitle).absolutePath
                     if (colorHex != null) colorStorage.saveColor(newPath, colorHex)
                 }
             }
-            loadContent()
+
+            // İşlem bitince listeyi yenile
+            withContext(Dispatchers.Main) {
+                loadContent()
+            }
         }
     }
-
     private fun setupBackNavigation() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -996,9 +1001,14 @@ class MainActivity : AppCompatActivity() {
             .setApplicationName("HeyNotes").build()
 
         driveServiceHelper = DriveServiceHelper(googleDriveService)
-        CoroutineScope(Dispatchers.Main).launch {
+
+        // DÜZELTME: lifecycleScope kullanıldı
+        lifecycleScope.launch(Dispatchers.Main) {
             try {
-                rootDriveId = driveServiceHelper?.getOrCreateRootFolder()
+                // Arka plan işlerini withContext(IO) içine alıyoruz
+                withContext(Dispatchers.IO) {
+                    rootDriveId = driveServiceHelper?.getOrCreateRootFolder()
+                }
                 currentDriveId = rootDriveId
                 isDriveMode = true
                 driveBreadcrumbs.clear(); driveBreadcrumbs.add("Main")
@@ -1009,7 +1019,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-
     private fun checkStoragePermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager()) {
@@ -1019,5 +1028,59 @@ class MainActivity : AppCompatActivity() {
                 startActivity(intent)
             }
         }
+    }
+
+    // --- SETTINGS & THEME MENU ---
+    private fun showSettingsMenu(anchorView: View) {
+        // 1. Layout'u Yükle
+        val inflater = LayoutInflater.from(this)
+        val popupView = inflater.inflate(R.layout.popup_settings_menu, null)
+
+        // 2. Pencereyi Oluştur
+        val popupWindow = PopupWindow(
+            popupView,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            true
+        )
+        popupWindow.elevation = 10f
+
+        // 3. Elemanları Bul (TextView olduklarından emin oluyoruz)
+        val btnSystem = popupView.findViewById<TextView>(R.id.menuThemeSystem)
+        val btnLight = popupView.findViewById<TextView>(R.id.menuThemeLight)
+        val btnDark = popupView.findViewById<TextView>(R.id.menuThemeDark)
+        val btnAbout = popupView.findViewById<TextView>(R.id.menuAbout)
+
+        // 4. Tıklama Olayları
+        btnSystem.setOnClickListener {
+            updateTheme(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+            popupWindow.dismiss()
+        }
+
+        btnLight.setOnClickListener {
+            updateTheme(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO)
+            popupWindow.dismiss()
+        }
+
+        btnDark.setOnClickListener {
+            updateTheme(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES)
+            popupWindow.dismiss()
+        }
+
+        btnAbout.setOnClickListener {
+            popupWindow.dismiss()
+            startActivity(Intent(this, AboutActivity::class.java))
+        }
+
+        // 5. Menüyü Göster
+        popupWindow.showAsDropDown(anchorView, 0, 0)
+    }
+    private fun updateTheme(mode: Int) {
+        // 1. Ayarı Kaydet
+        getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+            .edit().putInt("theme_mode", mode).apply()
+
+        // 2. Temayı Uygula (Bu işlem Activity'i yeniden başlatır)
+        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(mode)
     }
 }
