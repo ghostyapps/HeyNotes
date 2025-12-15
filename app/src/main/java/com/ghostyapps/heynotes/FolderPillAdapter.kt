@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.core.content.ContextCompat // <--- BU IMPORT ÖNEMLİ
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
 
@@ -41,10 +42,14 @@ class FolderPillAdapter(
         fun bind(item: NoteItem) {
             tvName.text = item.name
 
-            // --- FIX: Define assignedColor here so it's visible everywhere below ---
+            // Renkleri hazırla
             val assignedColor = item.color ?: Color.parseColor("#616161")
 
-            // 1. SELECTION MODE (Deleting)
+            // Tema Renkleri (Main butonu için)
+            val themeTextColor = ContextCompat.getColor(itemView.context, R.color.text_color)
+            val themeBgColor = ContextCompat.getColor(itemView.context, R.color.background_color) // veya toolbar_background
+
+            // --- 1. SELECTION MODE (Silme) ---
             if (item.isSelected) {
                 cardContainer.setCardBackgroundColor(ColorStateList.valueOf(Color.parseColor("#D32F2F")))
                 cardContainer.strokeWidth = 0
@@ -54,32 +59,50 @@ class FolderPillAdapter(
                 ivIcon.setColorFilter(Color.WHITE)
                 ivIcon.visibility = View.VISIBLE
             }
-            // 2. ACTIVE STATE (Current Folder)
+            // --- 2. MAIN FOLDER (ÖZEL STİL - FAB GİBİ) ---
+            else if (item.id == "ROOT") {
+                if (item.isActive) {
+                    // AKTİF: Zemin Siyah(Text), Yazı Beyaz(Bg)
+                    cardContainer.setCardBackgroundColor(ColorStateList.valueOf(themeTextColor))
+                    cardContainer.strokeWidth = 0
+                    tvName.setTextColor(themeBgColor)
+                    ivIcon.setColorFilter(themeBgColor)
+                } else {
+                    // PASİF: Zemin Beyaz, Kenarlık Siyah
+                    cardContainer.setCardBackgroundColor(ColorStateList.valueOf(themeBgColor))
+                    cardContainer.strokeColor = themeTextColor
+                    cardContainer.strokeWidth = (1 * itemView.resources.displayMetrics.density).toInt() // İnce kenarlık
+                    tvName.setTextColor(themeTextColor)
+                    ivIcon.setColorFilter(themeTextColor)
+                }
+                // İkonu ayarla (Main için klasör ikonu yerine belki home ikonu veya yine klasör)
+                ivIcon.setImageResource(R.drawable.icon_folder_dot)
+                ivIcon.visibility = View.VISIBLE
+            }
+            // --- 3. DİĞER KLASÖRLER (STANDART STİL) ---
             else if (item.isActive) {
                 cardContainer.setCardBackgroundColor(ColorStateList.valueOf(assignedColor))
                 cardContainer.strokeWidth = 0
                 tvName.setTextColor(Color.WHITE)
 
-                // If active, show folder dot (white)
                 ivIcon.setImageResource(R.drawable.icon_folder_dot)
                 ivIcon.setColorFilter(Color.WHITE)
                 ivIcon.visibility = View.VISIBLE
             }
-            // 3. INACTIVE STATE (Navigable Subfolders)
             else {
-                cardContainer.setCardBackgroundColor(ColorStateList.valueOf(Color.WHITE))
+                // Pasif Diğer Klasörler
+                cardContainer.setCardBackgroundColor(ColorStateList.valueOf(Color.WHITE)) // Her zaman beyaz zemin
                 cardContainer.strokeColor = assignedColor
                 cardContainer.strokeWidth = (2 * itemView.resources.displayMetrics.density).toInt()
-                tvName.setTextColor(Color.parseColor("#202124"))
+                tvName.setTextColor(Color.parseColor("#202124")) // Standart koyu yazı
 
-                // Check if Locked to show Lock Icon, otherwise Folder Dot
+                // Kilitli mi?
                 if (item.isLocked) {
                     ivIcon.setImageResource(R.drawable.ic_lock_closed)
                 } else {
                     ivIcon.setImageResource(R.drawable.icon_folder_dot)
                 }
 
-                // Tint with the folder's color
                 ivIcon.setColorFilter(assignedColor)
                 ivIcon.visibility = View.VISIBLE
             }

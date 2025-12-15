@@ -46,6 +46,9 @@ import java.io.File
 import java.util.Calendar
 import java.util.Collections
 import androidx.lifecycle.lifecycleScope
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+
 
 
 class MainActivity : AppCompatActivity() {
@@ -109,6 +112,31 @@ class MainActivity : AppCompatActivity() {
         }
 
         setContentView(R.layout.activity_main)
+
+        val fab = findViewById<FloatingActionButton>(R.id.fabCreate)
+        val recycler = findViewById<RecyclerView>(R.id.recyclerNotes)
+
+        ViewCompat.setOnApplyWindowInsetsListener(fab) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+
+            // FAB'ı yukarı it
+            val params = view.layoutParams as ViewGroup.MarginLayoutParams
+            // 24dp (Mevcut margin) + Navigasyon Yüksekliği
+            val originalMargin = (24 * resources.displayMetrics.density).toInt()
+            params.bottomMargin = originalMargin + bars.bottom
+            view.layoutParams = params
+
+            // Listeyi de yukarı it (böylece son not butonun altında kalmaz)
+            recycler.setPadding(
+                recycler.paddingLeft,
+                recycler.paddingTop,
+                recycler.paddingRight,
+                (88 * resources.displayMetrics.density).toInt() + bars.bottom
+            )
+
+            // Insets'i tüketme, diğer view'lar da kullansın
+            insets
+        }
 
         // Init Helpers
         localServiceHelper = LocalServiceHelper(this)
@@ -425,14 +453,23 @@ class MainActivity : AppCompatActivity() {
         if (isFabMenuOpen) toggleFabMenu()
 
         if (isSelectionMode) {
+            // SİLME MODU (Kırmızı)
             fabCreate.setImageResource(android.R.drawable.ic_menu_delete)
             fabCreate.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#D32F2F"))
             fabCreate.setColorFilter(android.graphics.Color.WHITE)
             fabCreate.rotation = 0f
         } else {
+            // NORMAL MOD (Dinamik Renkler)
             fabCreate.setImageResource(android.R.drawable.ic_input_add)
-            fabCreate.backgroundTintList = android.content.res.ColorStateList.valueOf(resources.getColor(R.color.text_color, theme))
-            fabCreate.setColorFilter(android.graphics.Color.WHITE)
+
+            // --- DEĞİŞEN KISIM BURASI ---
+            // backgroundTint -> fab_background rengini al
+            fabCreate.backgroundTintList = android.content.res.ColorStateList.valueOf(resources.getColor(R.color.fab_background, theme))
+
+            // tint -> fab_icon rengini al
+            fabCreate.setColorFilter(resources.getColor(R.color.fab_icon, theme))
+            // ----------------------------
+
             fabCreate.rotation = 0f
         }
     }

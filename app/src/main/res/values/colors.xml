@@ -35,4 +35,8 @@
 
     <!-- ... diğer renkler ... -->
     <color name="toolbar_background">#FAFAFA</color> <!-- Gündüz için beyazımsı -->
+
+    <!-- FAB Colors (Light Mode) -->
+    <color name="fab_background">#202124</color> <!-- Siyah -->
+    <color name="fab_icon">#FFFFFF</color>       <!-- Beyaz -->
 </resources>
