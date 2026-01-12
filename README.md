@@ -1,48 +1,38 @@
-# HeyNotes
+![App Screenshot](screenshots/screenshot1.png)
 
-**HeyNotes** is a simple, clean, and powerful note-taking application designed for those who want full control over their data. Unlike traditional note-taking apps that lock your data in a proprietary database, HeyNotes stores every note as a **Markdown (.md)** file directly on your device.
+# HeyNotes - AI Powered Voice & Text Notes
 
-## Key Features
+HeyNotes is the smartest way to capture your thoughts. Powered by **Google Gemini AI**, it transforms your voice recordings into perfectly structured text, wrapped in a unique "Hole Punch" design with advanced organization features.
 
-### Real File System Integration
-Your notes are yours.
-* All notes are stored as standard `.md` files.
-* Access your notes directly via your phone's File Manager under `Documents > HeyNotes`.
-* **Easy Import/Export:** Want to import existing notes? Simply move your `.md` files into the `Documents > HeyNotes` folder, and they will automatically appear in the app.
+## 🌟 Key Features
 
-### Organization & Color Coding
-* Create **Folders** to keep your thoughts organized.
-* Assign custom **Color Codes** to files and folders to categorize them visually within the app.
-* Manage nested notes easily.
+### 🎙️ AI-Powered Transcription (Gemini 3 Flash)
+HeyNotes goes beyond simple recording. It utilizes Google's latest **Gemini 3 Flash** model to understand and process your speech.
+- **Smart Transcription:** Transcribes your audio in seconds with high accuracy.
+- **Clean Verbatim:** Automatically removes filler words (like "umm", "ahh", "err"), stutters, and false starts. You get a clean, readable text, not just a raw dump.
+- **Auto-Titling:** The AI analyzes the context of your recording and generates a concise, relevant title automatically.
+- **Multi-Language Support:** Speak in any language; the AI detects it and transcribes it accurately in the original language.
 
-### Secure Folders
-Protect your private thoughts with the **Secure Folder** feature.
-* Lock specific folders with a custom **PIN** (minimum 4 digits).
-* **Enhanced Privacy:** Once a folder is secured, it is **hidden from the device's File Manager**. It can only be accessed and viewed through the HeyNotes app after entering your PIN.
+### 📂 Smart Organization
+Organizing your notes has never been this fluid.
+- **Dynamic Folders (Pills):** Switch between categories instantly with a modern, color-coded "pill" interface.
+- **Drag & Drop:** Move notes between folders easily using intuitive menus.
+- **Favorites:** Keep your most important notes just a tap away.
+- **View Options:** Choose between a detailed **List View** or a visual **Grid View**.
 
----
+### 🎨 Unique & Modern Design
+- **Hole Punch Aesthetic:** A visual style featuring a "hole punch" effect inspired by the beautiful radio made by Braun, giving your voice recorder a premium feel.
+- **Fluid Animations:** Smooth Lottie animations enhance the voice recording and AI processing experience.
+- **Theme Support:** Fully optimized for both Dark Mode and Light Mode to match your system settings.
 
-## Important Warning Regarding Secure Folders
+### 📱 Quick Widget
+- **Instant Access:** Start a voice recording or create a new text note directly from your home screen.
+- **Pill-Shape Design:** A resizeable, modern widget that blends perfectly with your launcher.
 
-**Please Read Carefully:**
-When you secure a folder, HeyNotes hides it from the file system to prevent unauthorized access via File Managers.
+### ☁️ Security & Backup
+- **Google Drive Integration:** Coming soon.
+- **PIN Protection:** Keep your private notes secure with an in-app PIN lock.
 
-> **Warning:** Because these files are hidden for your security, **uninstalling the app or clearing the app's data may result in the permanent loss of these hidden notes.**
->
-> Please ensure you un-secure (unlock) your important folders before uninstalling the app if you wish to keep the `.md` files accessible in your storage.
-
----
-
-## Getting Started
-
-1. Open **HeyNotes**.
-2. Grant the necessary storage permissions.
-3. Start writing!
-4. Check your `Documents/HeyNotes` folder to see your files in action.
-
-## Format Support
-HeyNotes fully supports standard **Markdown** syntax, allowing you to format your text with headers, lists, bold, italics, and more, while keeping the file format universal.
 
 ---
-
-Made using **AI Studio**.
+*Developed with ❤️ by Ghosty.*

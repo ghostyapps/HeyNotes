@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/widget_background"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="32dp"
+    android:paddingTop="18dp"
+    android:paddingEnd="32dp"
+    android:paddingBottom="18dp">
+
+    <FrameLayout
+        android:id="@+id/btnWidgetVoice"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:padding="4dp">
+
+        <ImageView
+            android:id="@+id/ivWidgetVoice"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_voice_icon"
+            android:contentDescription="Voice Note"
+            android:tint="@color/text_color" />
+    </FrameLayout>
+
+    <ImageView
+        android:layout_width="1dp"
+        android:layout_height="20dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:background="@color/text_color_alt"
+        android:contentDescription="Divider"/>
+
+    <FrameLayout
+        android:id="@+id/btnWidgetText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:padding="4dp">
+
+        <ImageView
+            android:id="@+id/ivWidgetNote"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_notes_icon"
+            android:contentDescription="Text Note"
+            android:tint="@color/text_color" />
+    </FrameLayout>
+
+</LinearLayout>

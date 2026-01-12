@@ -46,25 +46,51 @@ class LocalServiceHelper(private val context: Context) {
         )
     }
 
+    // Dosya isimlerini temizleyen fonksiyon (Bunu class içine ekle)
+    private fun getSafeFileName(input: String): String {
+        return input.replace(":", "-")
+            .replace("/", "_")
+            .replace("\\", "_")
+            .trim()
+    }
+
     // Helper to scan a specific dir
+// Helper to scan a specific dir (GÜNCELLENDİ: FİLTRELEME EKLENDİ)
+// LocalServiceHelper.kt -> scanDirectory fonksiyonu
+
+// LocalServiceHelper.kt -> scanDirectory fonksiyonu
+
+// LocalServiceHelper.kt -> scanDirectory fonksiyonu
+
     private fun scanDirectory(dir: File): List<NoteItem> {
         if (!dir.exists()) dir.mkdirs()
-        return dir.listFiles()?.map { file ->
-            // Read Preview (Limit to avoid memory bloat)
+
+        // 1. LİSTE İÇİN KISA FORMAT (Yıl Yok: "24 May")
+        val shortFormat = java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault())
+
+        return dir.listFiles()?.filter {
+            it.isDirectory || it.extension.equals("md", ignoreCase = true)
+        }?.map { file ->
             val preview = if (!file.isDirectory) {
                 try { file.readText().take(150).replace("\n", " ") } catch (e: Exception) { "" }
             } else { "" }
+
+            val lastMod = file.lastModified()
+            val dateStr = shortFormat.format(java.util.Date(lastMod))
 
             NoteItem(
                 name = file.name,
                 isFolder = file.isDirectory,
                 id = file.absolutePath,
-                content = preview
+                content = preview,
+                date = dateStr,   // Listede görünecek kısa tarih
+                timestamp = lastMod // Editöre gönderilecek ham zaman
             )
         } ?: emptyList()
     }
 
-    // 4. Move Logic (Locking) - Safer "Copy & Delete" Method
+
+    // 4. Move Logic (Locking)
     fun moveFolderToPrivate(folderName: String): String? {
         val source = File(getPublicRoot(), folderName)
         val dest = File(getPrivateRoot(), folderName)
@@ -84,7 +110,7 @@ class LocalServiceHelper(private val context: Context) {
         return null
     }
 
-    // 5. Move Logic (Unlocking) - Safer "Copy & Delete" Method
+    // 5. Move Logic (Unlocking)
     fun moveFolderToPublic(folderName: String): String? {
         val source = File(getPrivateRoot(), folderName)
         val dest = File(getPublicRoot(), folderName)
@@ -110,14 +136,28 @@ class LocalServiceHelper(private val context: Context) {
         if (!newFolder.exists()) newFolder.mkdirs()
     }
 
-    // 7. Save Note (With Duplicate Handling)
-    fun saveNote(parentDir: File, title: String, content: String) {
-        val safeTitle = if (title.endsWith(".md")) title else "$title.md"
-        val file = getUniqueFile(parentDir, safeTitle)
+    // 7. Save Note (Updated to Return File)
+    fun saveNote(parentDir: File, title: String, content: String): File {
+        val safeTitle = getSafeFileName(title)
+        val finalName = if (safeTitle.isNotEmpty()) safeTitle else "Untitled Note ${System.currentTimeMillis()}"
+
+        // DÜZELTME BURADA: 'folder' yerine 'parentDir' kullanıyoruz
+        val file = File(parentDir, "$finalName.md")
+
         file.writeText(content)
+        return file
     }
 
-    // 8. Update Note (Rename Handling)
+    // --- YENİ EKLENEN FONKSİYON ---
+    // MainActivity'deki hatayı çözen kısım burası.
+    // ID parametresini alıyor ama dosya sistemi yapısında şimdilik "saveNote" ile aynı işi yapıyor.
+    // İleride ID ile özel bir meta-data tutmak istersen burayı geliştirebilirsin.
+    fun saveNoteWithId(parentDir: File, title: String, content: String, id: String): File {
+        return saveNote(parentDir, title, content)
+    }
+    // -----------------------------
+
+    // 8. Update Note
     fun updateNote(oldPath: String, newTitle: String, content: String) {
         val oldFile = File(oldPath)
         val parentDir = oldFile.parentFile ?: return
@@ -136,15 +176,28 @@ class LocalServiceHelper(private val context: Context) {
         return File(path).readText()
     }
 
+    // Delete File (GÜNCELLENDİ: SES DOSYASINI DA SİLME)
     fun deleteFile(path: String) {
         val file = File(path)
+
+        // 1. Asıl dosyayı sil (.md)
         if (file.exists()) file.deleteRecursively()
+
+        // 2. Eğer bu bir not ise, yanında ses dosyası var mı bak ve sil (.m4a)
+        if (file.isFile && file.extension.equals("md", ignoreCase = true)) {
+            val audioPath = path.substringBeforeLast(".") + ".m4a"
+            val audioFile = File(audioPath)
+            if (audioFile.exists()) {
+                audioFile.delete()
+            }
+        }
     }
+
 
     // Helper for unique names (File (1).md)
     private fun getUniqueFile(parentDir: File, desiredName: String): File {
         var file = File(parentDir, desiredName)
-        var nameWithoutExt = desiredName.removeSuffix(".md")
+        val nameWithoutExt = desiredName.removeSuffix(".md")
         var counter = 1
         while (file.exists()) {
             val newName = "$nameWithoutExt ($counter).md"
@@ -158,7 +211,7 @@ class LocalServiceHelper(private val context: Context) {
         return getPublicRoot()
     }
 
-    // 9. RECURSIVE COUNT (OPTIMIZED: Suspend & IO Dispatcher)
+    // 9. RECURSIVE COUNT
     suspend fun getTotalNoteCount(): Int = withContext(Dispatchers.IO) {
         val publicCount = getPublicRoot().walk().filter { it.isFile && it.name.endsWith(".md") }.count()
         val privateCount = getPrivateRoot().walk().filter { it.isFile && it.name.endsWith(".md") }.count()

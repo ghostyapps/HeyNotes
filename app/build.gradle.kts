@@ -13,7 +13,7 @@ android {
         minSdk = 26 // 34 is very high for minSdk, 26 (Android 8) covers 90%+ devices
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.9"
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -86,6 +86,9 @@ dependencies {
     implementation("com.google.api-client:google-api-client-android:2.2.0")
     implementation("com.google.apis:google-api-services-drive:v3-rev20230822-2.0.0")
 
+    //Google AI
+    implementation("com.google.ai.client.generativeai:generativeai:0.9.0") // Sürümü güncel tutun
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
@@ -102,4 +105,8 @@ dependencies {
     // Add this to ensure Headings and styling work correctly
     implementation("io.noties.markwon:ext-strikethrough:4.6.2")
     implementation("io.noties.markwon:ext-tasklist:4.6.2")
+
+    implementation("androidx.preference:preference-ktx:1.2.1")
+
+    implementation("com.airbnb.android:lottie:6.1.0")
 }

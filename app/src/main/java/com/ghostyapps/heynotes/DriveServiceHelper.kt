@@ -79,6 +79,29 @@ class DriveServiceHelper(private val mDriveService: Drive) {
         return@withContext stringBuilder.toString()
     }
 
+
+    fun moveFile(fileId: String, folderId: String) {
+        // 1. Mevcut ebeveyn klasörleri bul
+        val file = mDriveService.files().get(fileId)
+            .setFields("parents")
+            .execute()
+
+        val previousParents = StringBuilder()
+        file.parents?.forEach { parent ->
+            previousParents.append(parent)
+            previousParents.append(',')
+        }
+
+        // 2. Yeni klasöre ekle, eskilerden çıkar
+        mDriveService.files().update(fileId, null)
+            .setAddParents(folderId)
+            .setRemoveParents(previousParents.toString())
+            .setFields("id, parents")
+            .execute()
+    }
+
+
+
     // Update an existing note's content and title
     suspend fun updateFile(fileId: String, newTitle: String, content: String) = withContext(Dispatchers.IO) {
         val metadata = File()
@@ -88,6 +111,22 @@ class DriveServiceHelper(private val mDriveService: Drive) {
 
         // The 'update' method handles both metadata (name) and media (content)
         mDriveService.files().update(fileId, metadata, contentStream).execute()
+    }
+
+
+    // DriveServiceHelper.kt dosyasını aç ve class içine şu fonksiyonu ekle:
+
+    fun renameFile(fileId: String, newName: String) {
+        try {
+            val metadata = com.google.api.services.drive.model.File()
+            metadata.name = newName
+
+            // Drive API güncelleme isteği
+            mDriveService.files().update(fileId, metadata).execute()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            throw e
+        }
     }
 
     suspend fun deleteFile(fileId: String) = withContext(Dispatchers.IO) {

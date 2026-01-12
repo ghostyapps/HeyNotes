@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="180dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/background_popup"
+    android:padding="8dp"
+    android:elevation="8dp">
+
+    <LinearLayout
+        android:id="@+id/btnRename"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:padding="12dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="?selectableItemBackground">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Rename"
+            android:textSize="16sp"
+            android:textColor="@color/text_color"
+            android:fontFamily="@font/productsans_medium"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/btnColor"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:padding="12dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="?selectableItemBackground">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Change Color"
+            android:textSize="16sp"
+            android:textColor="@color/text_color"
+            android:fontFamily="@font/productsans_medium"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/btnDelete"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:padding="12dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="?selectableItemBackground">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Delete"
+            android:textSize="16sp"
+            android:textColor="#EF5350"
+            android:fontFamily="@font/productsans_medium"/>
+    </LinearLayout>
+
+</LinearLayout>

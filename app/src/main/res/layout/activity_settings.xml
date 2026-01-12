@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_color"
+    tools:context=".SettingsActivity">
+
+    <LinearLayout
+        android:id="@+id/headerContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingTop="68dp"
+        android:paddingBottom="24dp"
+        android:paddingHorizontal="24dp"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageView
+            android:id="@+id/btnBack"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/ic_back"
+            android:padding="4dp"
+            app:tint="@color/text_color"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Settings"
+            android:textSize="32sp"
+            android:textColor="@color/text_color"
+            android:fontFamily="@font/productsans_bold"
+            android:layout_marginStart="16dp"/>
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:clipToPadding="false"
+        android:paddingBottom="40dp"
+        app:layout_constraintTop_toBottomOf="@+id/headerContainer"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp">
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                app:cardBackgroundColor="@color/card_surface"
+                app:cardCornerRadius="24dp"
+                app:cardElevation="4dp"
+                app:strokeWidth="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="24dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Profile"
+                        android:textSize="20sp"
+                        android:textColor="@color/text_color"
+                        android:fontFamily="@font/productsans_bold"
+                        android:layout_marginBottom="16dp"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Your Name"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_color_alt"
+                        android:fontFamily="@font/productsans_medium"
+                        android:layout_marginBottom="8dp"/>
+
+                    <EditText
+                        android:id="@+id/etUserName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_input_pill"
+                        android:backgroundTint="@color/header_card_background"
+                        android:padding="16dp"
+                        android:hint="Enter your name"
+                        android:textColor="@color/text_color"
+                        android:textColorHint="@color/text_color_alt"
+                        android:fontFamily="@font/productsans_regular"
+                        android:inputType="textPersonName|textCapWords"
+                        android:maxLines="1"/>
+
+                    <TextView
+                        android:id="@+id/btnSaveName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Save Name"
+                        android:gravity="center"
+                        android:background="@drawable/bg_button_rounded"
+                        android:backgroundTint="@color/text_color"
+                        android:textColor="@color/background_color"
+                        android:fontFamily="@font/productsans_bold"
+                        android:padding="14dp"
+                        android:layout_marginTop="16dp"
+                        android:clickable="true"
+                        android:focusable="true"/>
+
+                    <TextView
+                        android:id="@+id/btnChangePin"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/productsans_bold"
+                        android:textColor="@color/text_color"
+                        android:text="Change PIN"
+                        android:paddingTop="36dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:drawableEnd="@drawable/ic_lock_icon" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                app:cardBackgroundColor="@color/card_surface"
+                app:cardCornerRadius="24dp"
+                app:cardElevation="4dp"
+                app:strokeWidth="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="24dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="16dp">
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_gemini_logo"
+                            android:layout_marginEnd="12dp"/>
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Gemini Settings"
+                            android:textSize="20sp"
+                            android:textColor="@color/text_color"
+                            android:fontFamily="@font/productsans_bold"/>
+
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/switchGemini"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            app:trackTint="@color/text_color"
+                            app:thumbTint="@color/background_color"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/llGeminiInputs"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="API Key"
+                            android:textSize="14sp"
+                            android:textColor="@color/text_color_alt"
+                            android:fontFamily="@font/productsans_medium"
+                            android:layout_marginBottom="8dp"/>
+
+                        <EditText
+                            android:id="@+id/etApiKey"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/bg_input_pill"
+                            android:backgroundTint="@color/header_card_background"
+                            android:padding="16dp"
+                            android:hint="Paste your API Key here"
+                            android:textColor="@color/text_color"
+                            android:textColorHint="@color/text_color_alt"
+                            android:fontFamily="@font/productsans_regular"
+                            android:inputType="textVisiblePassword|textNoSuggestions"
+                            android:maxLines="1"/>
+
+                        <TextView
+                            android:id="@+id/btnGetApiKey"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Create API Key"
+                            android:textColor="@color/text_color_alt"
+                            android:fontFamily="@font/productsans_bold"
+                            android:layout_gravity="end"
+                            android:layout_marginTop="12dp"
+                            android:layout_marginBottom="12dp"/>
+
+                        <TextView
+                            android:id="@+id/btnSaveApiKey"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Save API Key"
+                            android:gravity="center"
+                            android:background="@drawable/bg_button_rounded"
+                            android:backgroundTint="@color/text_color"
+                            android:textColor="@color/background_color"
+                            android:fontFamily="@font/productsans_bold"
+                            android:padding="14dp"
+                            android:layout_marginTop="8dp"
+                            android:clickable="true"
+                            android:focusable="true"/>
+
+                        <TextView
+                            android:id="@+id/tvGeminiInstructions"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/text_color_alt"
+                            android:textColorLink="@color/text_color"
+                            android:textSize="13sp"
+                            android:fontFamily="@font/productsans_medium"
+                            android:lineSpacingExtra="4dp"
+                            android:layout_marginTop="24dp"
+                            android:alpha="0.8"/>
+
+                    </LinearLayout>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+    </ScrollView>
+</androidx.constraintlayout.widget.ConstraintLayout>

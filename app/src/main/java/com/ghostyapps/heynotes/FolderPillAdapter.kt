@@ -7,112 +7,98 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
-import androidx.core.content.ContextCompat // <--- BU IMPORT ÖNEMLİ
+import androidx.core.content.res.ResourcesCompat
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
 
 class FolderPillAdapter(
     private val onItemClick: (NoteItem, View) -> Unit,
-    private val onItemLongClick: (NoteItem) -> Unit
-) : RecyclerView.Adapter<FolderPillAdapter.FolderViewHolder>() {
+    private val onItemLongClick: (NoteItem, View) -> Unit
+) : ListAdapter<NoteItem, FolderPillAdapter.PillViewHolder>(PillDiffCallback()) {
 
-    private var items: List<NoteItem> = emptyList()
-
-    fun submitList(newItems: List<NoteItem>) {
-        items = newItems
-        notifyDataSetChanged()
-    }
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FolderViewHolder {
-        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_folder_pill, parent, false)
-        return FolderViewHolder(view)
-    }
-
-    override fun onBindViewHolder(holder: FolderViewHolder, position: Int) {
-        holder.bind(items[position])
-    }
-
-    override fun getItemCount() = items.size
-
-    inner class FolderViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        private val cardContainer: MaterialCardView = itemView.findViewById(R.id.cardContainer)
+    inner class PillViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        // XML'deki ID'ler ile eşleştirdik
         private val tvName: TextView = itemView.findViewById(R.id.tvName)
         private val ivIcon: ImageView = itemView.findViewById(R.id.ivIcon)
+        private val container: MaterialCardView = itemView.findViewById(R.id.cardContainer)
 
         fun bind(item: NoteItem) {
             tvName.text = item.name
 
-            // Renkleri hazırla
-            val assignedColor = item.color ?: Color.parseColor("#616161")
-
-            // Tema Renkleri (Main butonu için)
-            val themeTextColor = ContextCompat.getColor(itemView.context, R.color.text_color)
-            val themeBgColor = ContextCompat.getColor(itemView.context, R.color.background_color) // veya toolbar_background
-
-            // --- 1. SELECTION MODE (Silme) ---
-            if (item.isSelected) {
-                cardContainer.setCardBackgroundColor(ColorStateList.valueOf(Color.parseColor("#D32F2F")))
-                cardContainer.strokeWidth = 0
-                tvName.setTextColor(Color.WHITE)
-
-                ivIcon.setImageResource(R.drawable.ic_check_tick)
-                ivIcon.setColorFilter(Color.WHITE)
-                ivIcon.visibility = View.VISIBLE
-            }
-            // --- 2. MAIN FOLDER (ÖZEL STİL - FAB GİBİ) ---
-            else if (item.id == "ROOT") {
-                if (item.isActive) {
-                    // AKTİF: Zemin Siyah(Text), Yazı Beyaz(Bg)
-                    cardContainer.setCardBackgroundColor(ColorStateList.valueOf(themeTextColor))
-                    cardContainer.strokeWidth = 0
-                    tvName.setTextColor(themeBgColor)
-                    ivIcon.setColorFilter(themeBgColor)
-                } else {
-                    // PASİF: Zemin Beyaz, Kenarlık Siyah
-                    cardContainer.setCardBackgroundColor(ColorStateList.valueOf(themeBgColor))
-                    cardContainer.strokeColor = themeTextColor
-                    cardContainer.strokeWidth = (1 * itemView.resources.displayMetrics.density).toInt() // İnce kenarlık
-                    tvName.setTextColor(themeTextColor)
-                    ivIcon.setColorFilter(themeTextColor)
-                }
-                // İkonu ayarla (Main için klasör ikonu yerine belki home ikonu veya yine klasör)
+            // --- İKON AYARLARI ---
+            if (item.id == "ROOT") {
+                // Main için not/ev ikonu
+                ivIcon.setImageResource(R.drawable.ic_notes_icon)
+            } else if (item.id == "PRIVATE_ROOT") {
+                // Private için kilit ikonu
+                ivIcon.setImageResource(R.drawable.ic_lock_closed)
+            } else {
+                // Diğerleri için klasör ikonu
                 ivIcon.setImageResource(R.drawable.icon_folder_dot)
-                ivIcon.visibility = View.VISIBLE
             }
-            // --- 3. DİĞER KLASÖRLER (STANDART STİL) ---
-            else if (item.isActive) {
-                cardContainer.setCardBackgroundColor(ColorStateList.valueOf(assignedColor))
-                cardContainer.strokeWidth = 0
+
+            // --- RENK VE SEÇİLİLİK ---
+            if (item.isActive) {
+                // Seçiliyse: Arka plan rengini klasörün rengi yap
+                val color = item.color ?: Color.BLACK
+                container.setCardBackgroundColor(color)
+
+                // Seçiliyken yazı ve ikon BEYAZ
                 tvName.setTextColor(Color.WHITE)
-
-                ivIcon.setImageResource(R.drawable.icon_folder_dot)
                 ivIcon.setColorFilter(Color.WHITE)
-                ivIcon.visibility = View.VISIBLE
-            }
-            else {
-                // Pasif Diğer Klasörler
-                cardContainer.setCardBackgroundColor(ColorStateList.valueOf(Color.WHITE)) // Her zaman beyaz zemin
-                cardContainer.strokeColor = assignedColor
-                cardContainer.strokeWidth = (2 * itemView.resources.displayMetrics.density).toInt()
-                tvName.setTextColor(Color.parseColor("#202124")) // Standart koyu yazı
 
-                // Kilitli mi?
-                if (item.isLocked) {
-                    ivIcon.setImageResource(R.drawable.ic_lock_closed)
-                } else {
-                    ivIcon.setImageResource(R.drawable.icon_folder_dot)
+                // Fontu kalın yap
+                try {
+                    tvName.typeface = ResourcesCompat.getFont(itemView.context, R.font.productsans_bold)
+                } catch (e: Exception) {
+                    tvName.typeface = android.graphics.Typeface.DEFAULT_BOLD
                 }
+            } else {
+                // Seçili Değilse: Arka plan şeffaf veya gri
+                // cardContainer olduğu için rengi şeffaf yapıyoruz, stroke verebiliriz istersek
+                container.setCardBackgroundColor(Color.TRANSPARENT)
 
-                ivIcon.setColorFilter(assignedColor)
-                ivIcon.visibility = View.VISIBLE
+                // Yazı ve ikon GRİ
+                val defaultColor = Color.parseColor("#9E9E9E") // Veya R.color.text_color_alt
+                tvName.setTextColor(defaultColor)
+                ivIcon.setColorFilter(defaultColor)
+
+                // Fontu normal yap
+                try {
+                    tvName.typeface = ResourcesCompat.getFont(itemView.context, R.font.productsans_medium)
+                } catch (e: Exception) {
+                    tvName.typeface = android.graphics.Typeface.DEFAULT
+                }
             }
 
-            itemView.setOnClickListener { onItemClick(item, cardContainer) }
-
-            itemView.setOnLongClickListener {
-                onItemLongClick(item)
+            // Tıklama olayları
+            container.setOnClickListener { onItemClick(item, container) }
+            container.setOnLongClickListener {
+                onItemLongClick(item, container)
                 true
             }
+        }
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PillViewHolder {
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_folder_pill, parent, false)
+        return PillViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: PillViewHolder, position: Int) {
+        holder.bind(getItem(position))
+    }
+
+    class PillDiffCallback : DiffUtil.ItemCallback<NoteItem>() {
+        override fun areItemsTheSame(oldItem: NoteItem, newItem: NoteItem): Boolean {
+            return oldItem.id == newItem.id
+        }
+
+        override fun areContentsTheSame(oldItem: NoteItem, newItem: NoteItem): Boolean {
+            return oldItem == newItem
         }
     }
 }

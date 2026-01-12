@@ -14,7 +14,19 @@
     <!-- Light Gray for the top header block -->
     <color name="header_background">#F2F2F2</color>
     <!-- White for the main list area -->
-    <color name="background_color">#FFFFFF</color>
+    <color name="background_color">#E5E5E5</color>
+
+    <color name="card_surface">#FFFFFF</color>
+    <color name="card_surface_alt">#FFFFFF</color>
+
+
+    <color name="mic_hole_color">#333333</color>
+
+    <color name="mic_hole_overlay">#1A000000</color>
+
+
+    <color name="header_card_background">#F2F2F2</color>
+
     <!-- Dark text -->
     <color name="text_color">#202124</color>
     <!-- Lighter text for secondary info -->

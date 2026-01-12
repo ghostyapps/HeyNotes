@@ -10,17 +10,24 @@
 
     <!-- DARK MODE COLORS -->
 
-    <!-- Başlık Arkaplanı: Koyu Gri (Neredeyse Siyah) -->
-    <color name="header_background">#121212</color>
+
 
     <!-- İçerik Alanı: Biraz daha açık bir koyu gri (Kart efekti için) -->
-    <color name="background_color">#1E1E1E</color>
+    <color name="background_color">#000000</color>
 
-    <!-- Metin Rengi: Beyazımsı Gri (Göz yormaması için tam beyaz değil) -->
+    <color name="header_background">#1E1E1E</color>
+    <color name="card_surface">#131313</color>
+    <color name="card_surface_alt">#292929</color>
+
+
     <color name="text_color">#E0E0E0</color>
-
-    <!-- İkincil Metin: Orta Gri -->
     <color name="text_color_alt">#A0A0A0</color>
+
+    <color name="mic_hole_color">#303030</color>
+
+    <color name="mic_hole_overlay">#66000000</color>
+
+    <color name="header_card_background">#2C2C2C</color>
 
     <!-- Toolbar/Pill Arkaplanı: İçerikten biraz daha açık -->
     <color name="toolbar_background">#2C2C2C</color>

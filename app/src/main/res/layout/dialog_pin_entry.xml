@@ -1,64 +1,53 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="24dp"
-    app:cardCornerRadius="28dp"
-    app:cardElevation="16dp"
-    app:cardBackgroundColor="@color/toolbar_background">
+    android:layout_marginHorizontal="32dp"
+    app:cardCornerRadius="24dp"
+    app:cardElevation="8dp"
+    app:cardBackgroundColor="@color/header_background">
 
-<LinearLayout
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="24dp">
 
-        <!-- Başlık -->
         <TextView
             android:id="@+id/tvTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Enter Password"
-            android:textSize="22sp"
+            android:layout_gravity="center"
+            android:text="Security"
             android:textColor="@color/text_color"
+            android:textSize="18sp"
             android:fontFamily="@font/productsans_bold"
-            android:layout_marginBottom="8dp" />
+            android:layout_marginBottom="24dp"/>
 
-        <!-- Açıklama (Sadece kurulumda görünür olacak) -->
-        <TextView
-            android:id="@+id/tvMessage"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Description goes here..."
-            android:textSize="14sp"
-            android:textColor="@color/text_color_alt"
-            android:fontFamily="@font/productsans_medium"
-            android:lineSpacingMultiplier="1.2"
-            android:layout_marginBottom="24dp"
-            android:visibility="gone"/>
-
-        <!-- Şifre Giriş Kutusu (Hap Şeklinde) -->
         <EditText
             android:id="@+id/etPin"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_floating_toolbar"
-            android:hint="PIN"
-            android:padding="16dp"
-            android:textSize="24sp"
-            android:letterSpacing="0.2"
-            android:fontFamily="@font/productsans_bold"
+            android:background="@drawable/bg_input_pill"
+            android:elevation="8dp"
+            android:layout_margin="8dp"
+            android:hint="Enter 4-digit PIN"
+            android:textColorHint="#909E9E9E"
             android:textColor="@color/text_color"
-            android:gravity="center"
+            android:textSize="14sp"
+            android:fontFamily="@font/productsans_medium"
             android:inputType="numberPassword"
-            android:maxLines="1"
-            android:layout_marginBottom="24dp" />
+            android:gravity="center"
+            android:padding="16dp"
+            android:maxLength="6"
+            android:imeOptions="actionDone"/>
 
-        <!-- Butonlar -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
             android:orientation="horizontal"
             android:gravity="end">
 
@@ -67,12 +56,10 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Cancel"
-                android:textSize="16sp"
                 android:textColor="@color/text_color_alt"
-                android:fontFamily="@font/productsans_bold"
+                android:textSize="14sp"
+                android:fontFamily="@font/productsans_medium"
                 android:padding="12dp"
-                android:clickable="true"
-                android:focusable="true"
                 android:layout_marginEnd="8dp"/>
 
             <TextView
@@ -80,15 +67,12 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Confirm"
-                android:textSize="16sp"
-                android:textColor="@color/text_color"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
                 android:fontFamily="@font/productsans_bold"
-                android:padding="12dp"
-                android:clickable="true"
-                android:focusable="true"/>
-
+                android:paddingVertical="10dp"
+                android:paddingHorizontal="24dp"
+                android:background="@drawable/bg_button_rounded"/>
         </LinearLayout>
-
     </LinearLayout>
-
-</androidx.cardview.widget.CardView>
+</com.google.android.material.card.MaterialCardView>

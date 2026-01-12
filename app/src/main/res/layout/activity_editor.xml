@@ -1,176 +1,333 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@color/header_background"
+    android:background="@color/background_color"
     tools:context=".EditorActivity">
 
-    <!-- HEADER SECTION (Gray) -->
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:id="@+id/headerSection"
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardHeader"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:minHeight="140dp"
-        android:background="@color/header_background"
-        android:paddingStart="24dp"
-        android:paddingEnd="24dp"
-        android:paddingTop="48dp"
-        android:paddingBottom="24dp">
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="62dp"
+        app:cardBackgroundColor="@color/header_card_background"
+        app:cardCornerRadius="28dp"
+        app:cardElevation="6dp"
+        app:strokeWidth="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- TITLE INPUT -->
-        <EditText
-            android:id="@+id/etTitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:background="@null"
-            android:hint="Title"
-            android:textColorHint="@color/text_color_alt"
-            android:textSize="32sp"
-            android:textColor="@color/text_color"
-            android:fontFamily="@font/productsans_bold"
-            android:inputType="textCapSentences|textMultiLine"
-            android:maxLines="2"
-            android:layout_marginEnd="16dp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toStartOf="@+id/ivNoteColor"/>
-
-        <!-- NEW: COLOR DOT -->
-        <ImageView
-            android:id="@+id/ivNoteColor"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:src="@drawable/shape_circle"
-            android:elevation="4dp"
-            app:tint="@color/text_color_alt"
-            app:layout_constraintBottom_toBottomOf="@+id/etTitle"
-            app:layout_constraintTop_toTopOf="@+id/etTitle"
-            app:layout_constraintEnd_toEndOf="parent" />
-
-    </androidx.constraintlayout.widget.ConstraintLayout>
-
-    <!-- BODY SECTION (White Card) -->
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="@drawable/bg_content_card">
-
-        <!-- VIEW MODE: The Reader -->
-        <ScrollView
-            android:id="@+id/scrollViewReader"
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/headerSection"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:visibility="gone"
-            android:padding="24dp"
-            android:clipToPadding="false"
-            app:layout_constraintBottom_toTopOf="@+id/bottomBar"
-            app:layout_constraintTop_toTopOf="parent">
+            android:layout_height="wrap_content"
+            android:minHeight="120dp"
+            android:padding="24dp">
 
             <TextView
-                android:id="@+id/tvReader"
-                android:layout_width="match_parent"
+                android:id="@+id/tvEditorDate"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textSize="18sp"
-                android:lineSpacingExtra="6dp"
+                android:text="May 24, 14:30"
+                android:textColor="@color/text_color_alt"
+                android:textSize="14sp"
+                android:fontFamily="@font/productsans_medium"
+                android:layout_marginBottom="8dp"
+                app:layout_constraintBottom_toTopOf="@+id/etTitle"
+                app:layout_constraintStart_toStartOf="parent"/>
+
+            <EditText
+                android:id="@+id/etTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:background="@null"
+                android:hint="Title"
+                android:textColorHint="@color/text_color_alt"
+                android:textSize="28sp"
                 android:textColor="@color/text_color"
-                android:fontFamily="@font/productsans_medium" />
-        </ScrollView>
+                android:fontFamily="@font/productsans_bold"
+                android:inputType="textCapSentences|textMultiLine"
+                android:maxLines="2"
+                android:layout_marginEnd="16dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toStartOf="@+id/ivNoteColor"/>
 
-        <!-- EDIT MODE: The Writer -->
-        <EditText
-            android:id="@+id/etContent"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:background="@null"
-            android:gravity="top|start"
-            android:hint="Start typing..."
-            android:padding="24dp"
-            android:inputType="textMultiLine|textNoSuggestions"
-            android:textSize="18sp"
-            android:textColor="@color/text_color"
-            android:fontFamily="@font/productsans_medium"
-            android:lineSpacingExtra="6dp"
-            app:layout_constraintBottom_toTopOf="@+id/bottomBar"
-            app:layout_constraintTop_toTopOf="parent" />
+            <ImageView
+                android:id="@+id/ivNoteColor"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/shape_circle"
+                app:tint="@color/text_color_alt"
+                app:layout_constraintBottom_toBottomOf="@+id/etTitle"
+                app:layout_constraintTop_toTopOf="@+id/etTitle"
+                app:layout_constraintEnd_toEndOf="parent" />
 
-        <!-- Bottom Bar -->
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardBottomToolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginBottom="48dp"
+        app:cardBackgroundColor="@color/card_surface"
+        app:cardCornerRadius="24dp"
+        app:cardElevation="8dp"
+        app:strokeWidth="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
         <LinearLayout
-            android:id="@+id/bottomBar"
             android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:background="@drawable/bg_floating_toolbar"
-            android:orientation="horizontal"
+            android:layout_height="64dp"
             android:gravity="center"
-            android:elevation="12dp"
-            android:layout_marginBottom="32dp"
-            android:layout_marginStart="48dp"
-            android:layout_marginEnd="48dp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent">
+            android:orientation="horizontal"
+            android:paddingHorizontal="8dp">
 
-            <!-- BOLD -->
             <TextView
                 android:id="@+id/btnBold"
                 android:layout_width="0dp"
-                android:layout_weight="1"
                 android:layout_height="match_parent"
-                android:text="B"
-                android:textSize="20sp"
-                android:gravity="center"
+                android:layout_weight="1"
+                android:background="?attr/selectableItemBackground"
                 android:fontFamily="@font/productsans_bold"
-                android:clickable="true"
-                android:focusable="true"
-                android:textColor="@color/selector_action_button" />
+                android:gravity="center"
+                android:text="B"
+                android:textColor="@color/selector_action_button"
+                android:textSize="20sp" />
 
-            <!-- HEADER -->
             <TextView
                 android:id="@+id/btnHeader"
                 android:layout_width="0dp"
-                android:layout_weight="1"
                 android:layout_height="match_parent"
-                android:text="H1"
-                android:textSize="20sp"
-                android:gravity="center"
+                android:layout_weight="1"
+                android:background="?attr/selectableItemBackground"
                 android:fontFamily="@font/productsans_bold"
-                android:clickable="true"
-                android:focusable="true"
-                android:textColor="@color/selector_action_button" />
+                android:gravity="center"
+                android:text="H1"
+                android:textColor="@color/selector_action_button"
+                android:textSize="20sp" />
 
-            <!-- LIST -->
             <TextView
                 android:id="@+id/btnList"
                 android:layout_width="0dp"
-                android:layout_weight="1"
                 android:layout_height="match_parent"
-                android:text="•"
-                android:textSize="28sp"
-                android:gravity="center"
+                android:layout_weight="1"
+                android:background="?attr/selectableItemBackground"
                 android:fontFamily="@font/productsans_bold"
-                android:clickable="true"
-                android:focusable="true"
-                android:textColor="@color/selector_action_button" />
+                android:gravity="center"
+                android:text="•"
+                android:textColor="@color/selector_action_button"
+                android:textSize="28sp" />
 
-            <!-- DONE -->
             <TextView
                 android:id="@+id/btnSave"
                 android:layout_width="0dp"
-                android:layout_weight="1"
                 android:layout_height="match_parent"
-                android:text="Done"
-                android:textSize="18sp"
-                android:gravity="center"
+                android:layout_weight="1"
+                android:background="?attr/selectableItemBackground"
                 android:fontFamily="@font/productsans_bold"
-                android:clickable="true"
-                android:focusable="true"
-                android:textColor="@color/selector_done_button" />
+                android:gravity="center"
+                android:text="Done"
+                android:textColor="@color/selector_done_button"
+                android:textSize="18sp" />
 
         </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
 
-    </androidx.constraintlayout.widget.ConstraintLayout>
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardContent"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="12dp"
+        app:cardBackgroundColor="@color/card_surface"
+        app:cardCornerRadius="28dp"
+        app:cardElevation="4dp"
+        app:strokeWidth="0dp"
+        app:layout_constraintTop_toBottomOf="@+id/cardHeader"
+        app:layout_constraintBottom_toTopOf="@+id/cardBottomToolbar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
-</LinearLayout>
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/card_surface">
+
+            <LinearLayout
+                android:id="@+id/playerContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="24dp"
+                android:paddingTop="24dp"
+                android:paddingBottom="12dp"
+                android:clipToPadding="false"
+                android:clipChildren="false"
+                android:visibility="gone"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_floating_toolbar"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingVertical="14dp"
+                    android:paddingHorizontal="16dp"
+                    android:elevation="2dp">
+
+                    <ImageView
+                        android:id="@+id/btnPlayPause"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:src="@drawable/ic_play_circle"
+                        app:tint="@color/text_color"/>
+
+                    <SeekBar
+                        android:id="@+id/seekBar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginHorizontal="12dp"
+                        android:progressTint="@color/text_color"
+                        android:thumbTint="@color/text_color"/>
+
+                    <TextView
+                        android:id="@+id/tvDuration"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="00:00"
+                        android:textSize="12sp"
+                        android:fontFamily="@font/productsans_medium"
+                        android:textColor="@color/text_color"/>
+                </LinearLayout>
+
+                <ImageView
+                    android:id="@+id/btnTranscribe"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_marginStart="16dp"
+                    app:srcCompat="@drawable/ic_gemini_logo"
+                    android:elevation="2dp"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:contentDescription="Transcribe" />
+
+            </LinearLayout>
+
+            <ScrollView
+                android:id="@+id/scrollViewReader"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:visibility="gone"
+                android:padding="24dp"
+                android:clipToPadding="false"
+                app:layout_constraintTop_toBottomOf="@+id/playerContainer"
+                app:layout_constraintBottom_toBottomOf="parent">
+
+                <TextView
+                    android:id="@+id/tvReader"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="18sp"
+                    android:lineSpacingExtra="6dp"
+                    android:textColor="@color/text_color"
+                    android:fontFamily="@font/productsans_medium" />
+            </ScrollView>
+
+            <EditText
+                android:id="@+id/etContent"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:background="@null"
+                android:gravity="top|start"
+                android:hint="Start typing..."
+                android:padding="24dp"
+                android:inputType="textMultiLine|textNoSuggestions"
+                android:textSize="18sp"
+                android:textColor="@color/text_color"
+                android:fontFamily="@font/productsans_medium"
+                android:lineSpacingExtra="6dp"
+                app:layout_constraintTop_toBottomOf="@+id/playerContainer"
+                app:layout_constraintBottom_toBottomOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <View
+        android:id="@+id/fabOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/header_background"
+        android:alpha="0.95"
+        android:visibility="gone"
+        android:elevation="20dp"
+        android:clickable="true"
+        android:focusable="true" />
+
+    <LinearLayout
+        android:id="@+id/geminiLoadingContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="center"
+        android:gravity="center"
+        android:visibility="gone"
+        android:elevation="30dp"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:padding="40dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <com.airbnb.lottie.LottieAnimationView
+            android:id="@+id/lottieGemini"
+            android:layout_width="180dp"
+            android:layout_height="180dp"
+            app:lottie_rawRes="@raw/ic_animated_gemini"
+            app:lottie_autoPlay="false"
+            app:lottie_loop="true"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:id="@+id/tvGeminiStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Processing..."
+            android:textSize="18sp"
+            android:textColor="@color/text_color"
+            android:fontFamily="@font/productsans_bold"
+            android:textAlignment="center"
+            android:alpha="0.8"/>
+
+        <TextView
+            android:id="@+id/tvGeminiAction"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="(Tap anywhere to close)"
+            android:textSize="14sp"
+            android:textColor="@color/text_color_alt"
+            android:fontFamily="@font/productsans_medium"
+            android:textAlignment="center"
+            android:visibility="gone"/>
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

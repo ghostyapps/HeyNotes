@@ -5,17 +5,16 @@ import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -25,39 +24,27 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope // <--- BU ÇOK ÖNEMLİ (PİL TASARRUFU İÇİN)
+import androidx.core.content.res.ResourcesCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.Scope
-import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
-import com.google.api.client.http.javanet.NetHttpTransport
-import com.google.api.client.json.gson.GsonFactory
-import com.google.api.services.drive.Drive
-import com.google.api.services.drive.DriveScopes
-import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.airbnb.lottie.LottieAnimationView
+import com.google.android.material.card.MaterialCardView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Calendar
-import java.util.Collections
-import androidx.lifecycle.lifecycleScope
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-
-
 
 class MainActivity : AppCompatActivity() {
 
     // Helpers
     private var driveServiceHelper: DriveServiceHelper? = null
-    private lateinit var localServiceHelper: LocalServiceHelper
+    lateinit var localServiceHelper: LocalServiceHelper
     private lateinit var notesAdapter: NotesAdapter
-    private lateinit var folderAdapter: FolderPillAdapter
     private lateinit var colorStorage: ColorStorage
     private lateinit var securityStorage: SecurityStorage
 
@@ -65,7 +52,6 @@ class MainActivity : AppCompatActivity() {
     private var isDriveMode = false
     private var isSelectionMode = false
     private var isGridMode = false
-    private var isFabMenuOpen = false
     private var userName: String = "User"
 
     // Data Holders
@@ -82,839 +68,171 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvAppTitle: TextView
     private lateinit var tvGreeting: TextView
     private lateinit var tvSubtitle: TextView
+    private lateinit var layoutFolderSelector: LinearLayout
     private lateinit var recyclerNotes: RecyclerView
-    private lateinit var recyclerFolders: RecyclerView
-    private lateinit var fabCreate: FloatingActionButton
 
-    // FAB Menu Variables
-    private lateinit var fabMenuContainer: LinearLayout
-    private lateinit var fabOverlay: View
-    private lateinit var btnNewNote: View
-    private lateinit var btnNewFolder: View
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    // Alt Aksiyon Butonları
+    private lateinit var bottomActionContainer: LinearLayout
 
-        // --- TEMA YÜKLEME (EN ÜSTE) ---
-        val prefs = getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-        val themeMode = prefs.getInt("theme_mode", androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
-        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(themeMode)
-        // ------------------------------
+    // Selection Bar Variables
+    private lateinit var selectionBar: MaterialCardView
+    private lateinit var btnBulkMove: LinearLayout
+    private lateinit var btnBulkDelete: LinearLayout
 
-        super.onCreate(savedInstanceState)
+    // GEMINI UI
+    private lateinit var geminiLoadingContainer: LinearLayout
+    private lateinit var lottieGemini: LottieAnimationView
+    private lateinit var tvGeminiStatus: TextView
+    private lateinit var tvGeminiAction: TextView
 
-        // Status Bar Optimization
-        window.statusBarColor = resources.getColor(R.color.header_background, theme)
-        val nightModeFlags = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
-        if (nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
-            window.decorView.systemUiVisibility = window.decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
-        } else {
-            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-        }
+    private val dateFormat = java.text.SimpleDateFormat("dd_MM_YY_HH_mm_ss", java.util.Locale.getDefault())
 
-        setContentView(R.layout.activity_main)
+    // Result Launchers
+    private val voiceNoteLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val path = result.data?.getStringExtra("AUDIO_PATH")
+            if (path != null) {
+                val file = File(path)
+                val prefs = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+                val isGeminiEnabled = prefs.getBoolean("gemini_enabled", false)
 
-        val fab = findViewById<FloatingActionButton>(R.id.fabCreate)
-        val recycler = findViewById<RecyclerView>(R.id.recyclerNotes)
-
-        ViewCompat.setOnApplyWindowInsetsListener(fab) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-
-            // FAB'ı yukarı it
-            val params = view.layoutParams as ViewGroup.MarginLayoutParams
-            // 24dp (Mevcut margin) + Navigasyon Yüksekliği
-            val originalMargin = (24 * resources.displayMetrics.density).toInt()
-            params.bottomMargin = originalMargin + bars.bottom
-            view.layoutParams = params
-
-            // Listeyi de yukarı it (böylece son not butonun altında kalmaz)
-            recycler.setPadding(
-                recycler.paddingLeft,
-                recycler.paddingTop,
-                recycler.paddingRight,
-                (88 * resources.displayMetrics.density).toInt() + bars.bottom
-            )
-
-            // Insets'i tüketme, diğer view'lar da kullansın
-            insets
-        }
-
-        // Init Helpers
-        localServiceHelper = LocalServiceHelper(this)
-        colorStorage = ColorStorage(this)
-        securityStorage = SecurityStorage(this)
-        currentLocalDir = localServiceHelper.getRootFolder()
-
-        checkOnboarding()
-
-        setupUI()
-        setupAdapters()
-        setupBackNavigation()
-
-        loadContent()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        val prefs = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
-        userName = prefs.getString("user_name", "User") ?: "User"
-
-        // Sadece initialized ise ve ekrana dönüldüyse yükle
-        // Bu gereksiz yüklemeleri engeller
-        if (::localServiceHelper.isInitialized) loadContent()
-    }
-
-    // --- ONBOARDING ---
-    private fun checkOnboarding() {
-        val prefs = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
-        val savedName = prefs.getString("user_name", null)
-
-        if (savedName == null) {
-            val intent = Intent(this, WelcomeActivity::class.java)
-            startActivity(intent)
-            finish()
-        } else {
-            userName = savedName
-            checkStoragePermission()
-        }
-    }
-
-    // --- UI SETUP ---
-    private fun setupUI() {
-        tvAppTitle = findViewById(R.id.tvAppTitle)
-        tvGreeting = findViewById(R.id.tvGreeting)
-        tvSubtitle = findViewById(R.id.tvSubtitle)
-
-        fabCreate = findViewById(R.id.fabCreate)
-        fabMenuContainer = findViewById(R.id.fabMenuContainer)
-        fabOverlay = findViewById(R.id.fabOverlay)
-        btnNewNote = findViewById(R.id.btnNewNote)
-        btnNewFolder = findViewById(R.id.btnNewFolder)
-
-        // About Page YERİNE Settings Menu
-        findViewById<ImageView>(R.id.ivHeaderGraphic).setOnClickListener {
-            showSettingsMenu(it) // <--- DEĞİŞTİ
-        }
-
-        findViewById<ImageView>(R.id.btnToggleView).setOnClickListener {
-            isGridMode = !isGridMode
-            updateLayoutManager()
-        }
-
-        tvAppTitle.setOnClickListener {
-            val isRoot = (!isDriveMode && currentLocalDir?.name == "HeyNotes") || (isDriveMode && currentDriveId == rootDriveId)
-            if (isRoot) {
-                val intent = Intent(this, WelcomeActivity::class.java)
-                intent.putExtra("IS_EDIT_MODE", true)
-                startActivity(intent)
-            }
-        }
-
-        fabCreate.setOnClickListener {
-            if (isSelectionMode) showDeleteConfirmation() else toggleFabMenu()
-        }
-
-        fabOverlay.setOnClickListener { if (isFabMenuOpen) toggleFabMenu() }
-        btnNewNote.setOnClickListener { toggleFabMenu(); openEditor(null) }
-        btnNewFolder.setOnClickListener { toggleFabMenu(); showCreateFolderDialog() }
-    }
-
-    private fun toggleFabMenu() {
-        isFabMenuOpen = !isFabMenuOpen
-
-        if (isFabMenuOpen) {
-            fabMenuContainer.visibility = View.VISIBLE
-            fabOverlay.visibility = View.VISIBLE
-            fabMenuContainer.alpha = 0f
-            fabMenuContainer.translationY = 100f
-            fabMenuContainer.animate().alpha(1f).translationY(0f).setDuration(250).start()
-            fabCreate.animate().rotation(45f).setDuration(250).start()
-        } else {
-            fabMenuContainer.animate().alpha(0f).translationY(100f).setDuration(200)
-                .withEndAction {
-                    fabMenuContainer.visibility = View.GONE
-                    fabOverlay.visibility = View.GONE
-                }.start()
-            fabCreate.animate().rotation(0f).setDuration(250).start()
-        }
-    }
-
-    private fun setupAdapters() {
-        folderAdapter = FolderPillAdapter(
-            onItemClick = { folder, view ->
-                if (isSelectionMode) {
-                    toggleFolderSelection(folder)
+                if (isGeminiEnabled) {
+                    // Gemini AÇIKSA: Animasyonu başlat ve işle
+                    processGeminiAndNavigate(file)
                 } else {
-                    if (folder.isActive && folder.id != "ROOT") {
-                        showColorPopup(folder, view)
-                    } else {
-                        handleNavigation(folder)
-                    }
-                }
-            },
-            onItemLongClick = { folder ->
-                if (folder.id == "ROOT" || folder.isActive) {
-                    Toast.makeText(this, "Cannot delete current folder", Toast.LENGTH_SHORT).show()
-                } else {
-                    if (!isSelectionMode) { isSelectionMode = true; updateFabIcon() }
-                    toggleFolderSelection(folder)
+                    // Gemini KAPALIYSA: Direkt kaydet ve git
+                    saveAndNavigateToVoiceFolder(file)
                 }
             }
-        )
-
-        recyclerFolders = findViewById(R.id.recyclerFolders)
-        recyclerFolders.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-        recyclerFolders.adapter = folderAdapter
-
-        notesAdapter = NotesAdapter(
-            onItemClick = { item ->
-                if (isSelectionMode) toggleSelection(item)
-                else openEditor(item)
-            },
-            onItemLongClick = { item ->
-                if (!isSelectionMode) { isSelectionMode = true; updateFabIcon(); toggleSelection(item) }
-            },
-            onIconClick = { item, view ->
-                if (!isSelectionMode) showColorPopup(item, view)
-                else toggleSelection(item)
-            }
-        )
-        recyclerNotes = findViewById(R.id.recyclerNotes)
-        updateLayoutManager()
-        recyclerNotes.adapter = notesAdapter
-    }
-
-    private fun updateLayoutManager() {
-        notesAdapter.isGridMode = isGridMode
-        val toggleBtn = findViewById<ImageView>(R.id.btnToggleView)
-
-        if (isGridMode) {
-            recyclerNotes.layoutManager = GridLayoutManager(this, 2)
-            toggleBtn.setImageResource(R.drawable.ic_view_list)
-        } else {
-            recyclerNotes.layoutManager = LinearLayoutManager(this)
-            toggleBtn.setImageResource(R.drawable.ic_view_grid)
-        }
-        notesAdapter.notifyDataSetChanged()
-    }
-
-    private fun handleNavigation(item: NoteItem) {
-        if (item.id == "ROOT") {
-            if (isDriveMode) {
-                currentDriveId = rootDriveId
-                driveBreadcrumbs.clear(); driveBreadcrumbs.add("Main")
-            } else {
-                currentLocalDir = localServiceHelper.getRootFolder()
-            }
-            loadContent()
-            return
-        }
-
-        if (item.isActive) return
-
-        if (item.isLocked) {
-            showUnlockDialog(item)
-            return
-        }
-
-        if (isDriveMode) {
-            driveBreadcrumbs.add(item.name)
-            currentDriveId = item.id
-            loadContent()
-        } else {
-            currentLocalDir = File(item.id)
-            loadContent()
         }
     }
 
-    // --- OPTIMIZED CONTENT LOADING ---
-    private fun loadContent() {
-        isSelectionMode = false
-        updateFabIcon()
+    private fun processGeminiAndNavigate(audioFile: File) {
+        // 1. UI BAŞLATMA
+        geminiLoadingContainer.visibility = View.VISIBLE
+        geminiLoadingContainer.setOnClickListener(null)
+        lottieGemini.playAnimation()
 
-        val isRoot = (!isDriveMode && currentLocalDir?.name == "HeyNotes") || (isDriveMode && currentDriveId == rootDriveId)
+        // Durum Başlığı
+        tvGeminiStatus.text = "Transcribing..."
+        tvGeminiStatus.setTextColor(getColor(R.color.text_color))
 
-        // HEADER UPDATE (UI THREAD - HIZLI)
-        if (isRoot) {
-            val greeting = getGreeting()
-            tvAppTitle.text = "Hey, $userName"
-            tvGreeting.text = greeting
-            tvGreeting.visibility = View.VISIBLE
-            // Alt başlık veriler gelince güncellenecek
-            tvSubtitle.text = "Loading..."
-        } else {
-            val name = if (isDriveMode) driveBreadcrumbs.last() else currentLocalDir?.name ?: ""
-            tvAppTitle.text = name
-            tvGreeting.visibility = View.GONE
-            tvSubtitle.text = if (isDriveMode) "Drive Folder" else "Local Folder"
-        }
+        // Açıklama Metni (GÖRÜNÜR YAPILDI)
+        tvGeminiAction.text = "AI is analyzing your voice..."
+        tvGeminiAction.setTextColor(getColor(R.color.text_color_alt))
+        tvGeminiAction.visibility = View.VISIBLE
 
-        // BACKGROUND TASK START (lifecycleScope: Pil Tasarrufu)
         lifecycleScope.launch(Dispatchers.IO) {
+            var finalTitle = ""
+            var finalBody = ""
+            var isError = false
+            var uiErrorTitle = ""
+            var uiErrorDescription = ""
 
-            // 1. DATA FETCHING (HEAVY WORK)
-            val rawItems: List<NoteItem>
-            var totalNoteCount = 0
+            // --- GÜNCELLENMİŞ PROMPT ---
+            // Dil kuralı ve temizlik kuralı güçlendirildi.
+            val geminiPrompt = """
+                Analyze this audio. 
+                Return ONLY a raw JSON object (no markdown code blocks, no explanations) with exactly these two keys:
+                "title": "A short, concise title (max 5 words) written in the SAME LANGUAGE as the spoken audio. It must capture the main topic.",
+                "body": "Provide a full 'Clean Verbatim' transcription in the SAME LANGUAGE as the spoken audio. Remove filler words (like 'umm', 'ahh', 'ııı', 'eee'), stutters, and false starts. Do not summarize; write exactly what was said but make it readable. Format nicely with Markdown."
+            """.trimIndent()
 
-            if (isDriveMode) {
-                if (currentDriveId == null) return@launch
-                val files = driveServiceHelper?.listFiles(currentDriveId!!) ?: emptyList()
-                rawItems = files.map { NoteItem(it.name, it.mimeType.contains("folder"), it.id) }
-                // Drive Recursive count is hard, keeping it simple for now
-            } else {
-                if (currentLocalDir == null) return@launch
+            try {
+                val prefs = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+                val apiKey = prefs.getString("gemini_api_key", "") ?: ""
 
-                // Suspend function call (Optimized in LocalServiceHelper)
-                rawItems = localServiceHelper.listItems(currentLocalDir!!)
+                if (apiKey.isEmpty()) throw Exception("API Key is missing")
 
-                // Only count total if at root (Heavy Operation)
-                if (isRoot) {
-                    totalNoteCount = localServiceHelper.getTotalNoteCount()
-                }
-            }
-
-            // 2. DATA PROCESSING (Colors, Security)
-            val processedItems = rawItems.map {
-                it.copy(
-                    color = colorStorage.getColor(it.id),
-                    isLocked = securityStorage.isLocked(it.id)
+                val generativeModel = com.google.ai.client.generativeai.GenerativeModel(
+                    modelName = "gemini-3-flash-preview",
+                    apiKey = apiKey
                 )
-            }
 
-            val newSubFolders = processedItems.filter { it.isFolder }.toMutableList()
-            val newNotes = processedItems.filter { !it.isFolder }.toMutableList()
-
-            // 3. UI UPDATE (Switch back to Main Thread)
-            withContext(Dispatchers.Main) {
-                // Build Pills
-                val pillList = mutableListOf<NoteItem>()
-                pillList.add(NoteItem("Main", true, "ROOT", color = Color.parseColor("#BDBDBD"), isActive = isRoot))
-
-                if (!isRoot) {
-                    val currentName = if (isDriveMode) driveBreadcrumbs.last() else currentLocalDir?.name ?: "Folder"
-                    val currentId = if (isDriveMode) currentDriveId!! else currentLocalDir!!.absolutePath
-                    val currentColor = colorStorage.getColor(currentId) ?: Color.parseColor("#616161")
-                    pillList.add(NoteItem(currentName, true, currentId, color = currentColor, isActive = true))
+                val inputContent = com.google.ai.client.generativeai.type.content {
+                    blob("audio/mp4", audioFile.readBytes())
+                    text(geminiPrompt)
                 }
 
-                newSubFolders.forEach { it.isActive = false }
-                pillList.addAll(newSubFolders)
+                val response = generativeModel.generateContent(inputContent)
+                val rawText = response.text ?: ""
 
-                // Update Lists
-                currentFolders = pillList
-                currentNotes = newNotes
-                folderAdapter.submitList(currentFolders)
-                notesAdapter.submitList(currentNotes)
-
-                // Update Subtitle with Calculated Count
-                if (isRoot) {
-                    if (!isDriveMode) tvSubtitle.text = "You have $totalNoteCount Notes in total."
-                    else tvSubtitle.text = "Google Drive Storage"
-                } else {
-                    tvSubtitle.text = "${currentNotes.size} Notes"
+                val jsonString = rawText.replace("```json", "").replace("```", "").trim()
+                try {
+                    val jsonObject = org.json.JSONObject(jsonString)
+                    finalTitle = jsonObject.optString("title", "")
+                    finalBody = jsonObject.optString("body", "")
+                } catch (e: Exception) {
+                    finalTitle = ""
+                    finalBody = rawText
                 }
-            }
-        }
-    }
 
-    private fun getGreeting(): String {
-        val c = Calendar.getInstance()
-        val timeOfDay = c.get(Calendar.HOUR_OF_DAY)
-        return when (timeOfDay) {
-            in 0..11 -> "Good morning."
-            in 12..17 -> "Good afternoon."
-            else -> "Good evening."
-        }
-    }
+            } catch (e: Exception) {
+                isError = true
+                val msg = e.localizedMessage ?: ""
+                e.printStackTrace()
 
-    // --- SELECTION & DELETE ---
-    private fun toggleSelection(item: NoteItem) {
-        item.isSelected = !item.isSelected
-        checkSelectionState()
-        notesAdapter.notifyDataSetChanged()
-    }
-
-    private fun toggleFolderSelection(item: NoteItem) {
-        if (item.id == "ROOT" || item.isActive) return
-        item.isSelected = !item.isSelected
-        checkSelectionState()
-        folderAdapter.notifyDataSetChanged()
-    }
-
-    private fun checkSelectionState() {
-        val anyNotes = currentNotes.any { it.isSelected }
-        val anyFolders = currentFolders.any { it.isSelected }
-        if (!anyNotes && !anyFolders) {
-            isSelectionMode = false
-            updateFabIcon()
-        }
-    }
-
-    private fun updateFabIcon() {
-        if (isFabMenuOpen) toggleFabMenu()
-
-        if (isSelectionMode) {
-            // SİLME MODU (Kırmızı)
-            fabCreate.setImageResource(android.R.drawable.ic_menu_delete)
-            fabCreate.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#D32F2F"))
-            fabCreate.setColorFilter(android.graphics.Color.WHITE)
-            fabCreate.rotation = 0f
-        } else {
-            // NORMAL MOD (Dinamik Renkler)
-            fabCreate.setImageResource(android.R.drawable.ic_input_add)
-
-            // --- DEĞİŞEN KISIM BURASI ---
-            // backgroundTint -> fab_background rengini al
-            fabCreate.backgroundTintList = android.content.res.ColorStateList.valueOf(resources.getColor(R.color.fab_background, theme))
-
-            // tint -> fab_icon rengini al
-            fabCreate.setColorFilter(resources.getColor(R.color.fab_icon, theme))
-            // ----------------------------
-
-            fabCreate.rotation = 0f
-        }
-    }
-
-    private fun showDeleteConfirmation() {
-        val totalCount = currentNotes.count { it.isSelected } + currentFolders.count { it.isSelected }
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_delete_confirm, null)
-        val tvMessage = dialogView.findViewById<TextView>(R.id.tvMessage)
-        val btnDelete = dialogView.findViewById<TextView>(R.id.btnDelete)
-        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
-
-        tvMessage.text = "Are you sure you want to delete $totalCount item(s)?\nFolders will be deleted with their contents."
-
-        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-
-        btnDelete.setOnClickListener {
-            val lockedFolder = currentFolders.find { it.isSelected && it.isLocked }
-            if (lockedFolder != null) {
-                dialog.dismiss()
-                showPinDialogForDeletion(lockedFolder)
-            } else {
-                deleteSelectedItems()
-                dialog.dismiss()
-            }
-        }
-        btnCancel.setOnClickListener { dialog.dismiss() }
-        dialog.show()
-    }
-
-    private fun showPinDialogForDeletion(lockedItem: NoteItem) {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_pin_entry, null)
-        val tvTitle = dialogView.findViewById<TextView>(R.id.tvTitle)
-        val tvMessage = dialogView.findViewById<TextView>(R.id.tvMessage)
-        val etPin = dialogView.findViewById<EditText>(R.id.etPin)
-        val btnConfirm = dialogView.findViewById<TextView>(R.id.btnConfirm)
-        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
-
-        tvTitle.text = "Security Check"
-        tvMessage.visibility = View.VISIBLE
-        tvMessage.text = "Enter PIN for '${lockedItem.name}' to confirm deletion."
-        btnConfirm.text = "Delete"
-        btnConfirm.setTextColor(Color.parseColor("#D32F2F"))
-        etPin.hint = "PIN"
-
-        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-
-        btnConfirm.setOnClickListener {
-            val pin = etPin.text.toString()
-            if (securityStorage.checkPassword(lockedItem.id, pin)) {
-                deleteSelectedItems()
-                dialog.dismiss()
-            } else {
-                Toast.makeText(this, "Wrong Password", Toast.LENGTH_SHORT).show()
-                etPin.setText("")
-            }
-        }
-        btnCancel.setOnClickListener { dialog.dismiss() }
-        dialog.setOnShowListener {
-            etPin.requestFocus()
-            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-            imm.showSoftInput(etPin, InputMethodManager.SHOW_IMPLICIT)
-        }
-        dialog.show()
-    }
-
-    private fun deleteSelectedItems() {
-        val notesToDelete = currentNotes.filter { it.isSelected }
-        val foldersToDelete = currentFolders.filter { it.isSelected }
-        val allItems = notesToDelete + foldersToDelete
-
-        // DÜZELTME: lifecycleScope kullanıldı
-        lifecycleScope.launch(Dispatchers.IO) {
-            allItems.forEach { item ->
-                if (isDriveMode) {
-                    driveServiceHelper?.deleteFile(item.id)
-                } else {
-                    localServiceHelper.deleteFile(item.id)
-                }
-            }
-            // UI güncellemesi için Ana Thread
-            withContext(Dispatchers.Main) {
-                loadContent()
-                Toast.makeText(this@MainActivity, "Deleted.", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-    // --- DIALOGS (Create, Color, Lock, Unlock) ---
-    private fun showCreateFolderDialog() {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_create_folder, null)
-        val etFolderName = dialogView.findViewById<EditText>(R.id.etFolderName)
-        val colorContainer = dialogView.findViewById<LinearLayout>(R.id.colorContainer)
-        val btnCreate = dialogView.findViewById<TextView>(R.id.btnCreate)
-        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
-
-        var selectedColorHex: String? = null
-        var selectedDotView: ImageView? = null
-
-        val colors = listOf("#000000", "#616161", "#EF5350", "#FFA726", "#FFEE58", "#66BB6A", "#42A5F5", "#AB47BC", "#EC407A")
-
-        for (hex in colors) {
-            val dot = ImageView(this)
-            val size = (32 * resources.displayMetrics.density).toInt()
-            val margin = (8 * resources.displayMetrics.density).toInt()
-            val params = LinearLayout.LayoutParams(size, size)
-            params.setMargins(margin, 0, margin, 0)
-            dot.layoutParams = params
-            dot.setPadding(16, 16, 16, 16)
-
-            val bg = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.shape_circle)?.mutate()
-            bg?.setTint(Color.parseColor(hex))
-            dot.background = bg
-
-            dot.setColorFilter(Color.WHITE)
-            dot.tag = hex
-
-            if (hex == "#000000") {
-                dot.setImageResource(R.drawable.ic_lock_closed)
-                dot.imageAlpha = 150
-            } else {
-                dot.setImageResource(R.drawable.ic_check_tick)
-                dot.imageAlpha = 0
-            }
-
-            dot.setOnClickListener {
-                if (selectedDotView != null) {
-                    val prevHex = selectedDotView!!.tag as String
-                    if (prevHex == "#000000") selectedDotView!!.imageAlpha = 150 else selectedDotView!!.imageAlpha = 0
-                }
-                selectedDotView = dot
-                selectedColorHex = hex
-                dot.imageAlpha = 255
-            }
-            colorContainer.addView(dot)
-        }
-
-        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-
-        btnCreate.setOnClickListener {
-            val name = etFolderName.text.toString().trim()
-            if (name.isNotEmpty()) {
-                if (selectedColorHex == "#000000") {
-                    dialog.dismiss()
-                    showPinDialogForCreation(name)
-                } else {
-                    createFolder(name, selectedColorHex)
-                    dialog.dismiss()
-                }
-            } else {
-                Toast.makeText(this, "Enter a name", Toast.LENGTH_SHORT).show()
-            }
-        }
-        btnCancel.setOnClickListener { dialog.dismiss() }
-        dialog.show()
-    }
-
-    private fun showPinDialogForCreation(folderName: String) {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_pin_entry, null)
-        val tvTitle = dialogView.findViewById<TextView>(R.id.tvTitle)
-        val tvMessage = dialogView.findViewById<TextView>(R.id.tvMessage)
-        val etPin = dialogView.findViewById<EditText>(R.id.etPin)
-        val btnConfirm = dialogView.findViewById<TextView>(R.id.btnConfirm)
-        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
-
-        tvTitle.text = "Secure Folder Setup"
-        tvMessage.visibility = View.VISIBLE
-        tvMessage.text = "Set a PIN for '$folderName'.\nThis folder will be hidden from file managers."
-        btnConfirm.text = "Create"
-        etPin.hint = "PIN"
-
-        etPin.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
-        etPin.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
-                btnConfirm.performClick()
-                true
-            } else false
-        }
-
-        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-
-        btnConfirm.setOnClickListener {
-            val pin = etPin.text.toString()
-            if (pin.length >= 4) {
-                createLockedFolder(folderName, pin)
-                dialog.dismiss()
-            } else {
-                Toast.makeText(this, "PIN must be at least 4 digits", Toast.LENGTH_SHORT).show()
-            }
-        }
-        btnCancel.setOnClickListener { dialog.dismiss() }
-
-        dialog.setOnShowListener {
-            etPin.requestFocus()
-            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-            imm.showSoftInput(etPin, InputMethodManager.SHOW_IMPLICIT)
-        }
-        dialog.show()
-    }
-
-    private fun createLockedFolder(name: String, pin: String) {
-        val finishLocking = { id: String ->
-            securityStorage.setPassword(id, pin)
-            colorStorage.saveColor(id, "#000000")
-
-            if (!isDriveMode) {
-                val newPath = localServiceHelper.moveFolderToPrivate(name)
-                if (newPath != null) {
-                    securityStorage.setPassword(newPath, pin)
-                    colorStorage.saveColor(newPath, "#000000")
-                    securityStorage.setPassword(id, "")
-                }
-            }
-
-            runOnUiThread {
-                loadContent()
-                Toast.makeText(this, "Secure Folder Created", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        // DÜZELTME: lifecycleScope kullanıldı
-        lifecycleScope.launch(Dispatchers.IO) {
-            if (isDriveMode) {
-                val newId = driveServiceHelper?.createFolder(currentDriveId!!, name)
-                if (newId != null) finishLocking(newId)
-            } else {
-                localServiceHelper.createFolder(currentLocalDir!!, name)
-                val newFolder = File(currentLocalDir, name)
-                finishLocking(newFolder.absolutePath)
-            }
-        }
-    }
-    private fun createFolder(name: String, colorHex: String?) {
-        val finishCreation = { id: String ->
-            if (colorHex != null) colorStorage.saveColor(id, colorHex)
-            runOnUiThread { loadContent() }
-        }
-
-        // DÜZELTME: lifecycleScope kullanıldı
-        lifecycleScope.launch(Dispatchers.IO) {
-            if (isDriveMode) {
-                val newId = driveServiceHelper?.createFolder(currentDriveId!!, name)
-                if (newId != null) finishCreation(newId)
-            } else {
-                localServiceHelper.createFolder(currentLocalDir!!, name)
-                val newFolder = File(currentLocalDir, name)
-                finishCreation(newFolder.absolutePath)
-            }
-        }
-    }
-    private fun showColorPopup(item: NoteItem, anchorView: View) {
-        val inflater = LayoutInflater.from(this)
-        val popupView = inflater.inflate(R.layout.popup_color_picker, null)
-        val container = popupView.findViewById<LinearLayout>(R.id.colorContainer)
-
-        val popupWindow = PopupWindow(popupView, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true)
-        popupWindow.elevation = 10f
-
-        if (item.isFolder && item.id != "ROOT") {
-            val lockBtn = ImageView(this)
-            val size = (24 * resources.displayMetrics.density).toInt()
-            val margin = (6 * resources.displayMetrics.density).toInt()
-            val params = LinearLayout.LayoutParams(size, size)
-            params.setMargins(margin, 0, margin, 0)
-            lockBtn.layoutParams = params
-
-            val isLocked = securityStorage.isLocked(item.id)
-            lockBtn.setImageResource(if (isLocked) R.drawable.ic_lock_open else R.drawable.ic_lock_closed)
-            lockBtn.setBackgroundResource(R.drawable.shape_circle)
-            lockBtn.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.LTGRAY)
-            lockBtn.setPadding(8,8,8,8)
-
-            lockBtn.setOnClickListener {
-                popupWindow.dismiss()
-                showLockSetupDialog(item)
-            }
-            container.addView(lockBtn)
-        }
-
-        val colors = listOf("#BDBDBD", "#616161", "#EF5350", "#FFA726", "#FFEE58", "#66BB6A", "#42A5F5", "#AB47BC", "#EC407A")
-
-        for (colorHex in colors) {
-            val dot = View(this)
-            val size = (24 * resources.displayMetrics.density).toInt()
-            val margin = (6 * resources.displayMetrics.density).toInt()
-            val params = LinearLayout.LayoutParams(size, size)
-            params.setMargins(margin, 0, margin, 0)
-            dot.layoutParams = params
-
-            val bg = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.shape_circle)?.mutate()
-            bg?.setTint(Color.parseColor(colorHex))
-            dot.background = bg
-
-            dot.setOnClickListener {
-                colorStorage.saveColor(item.id, colorHex)
-                loadContent()
-                popupWindow.dismiss()
-            }
-            container.addView(dot)
-        }
-
-        popupView.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
-        val popupHeight = popupView.measuredHeight
-        val location = IntArray(2)
-        anchorView.getLocationOnScreen(location)
-        val x = location[0] + anchorView.width / 2
-        val y = location[1] - (popupHeight / 2) + (anchorView.height / 2)
-        popupWindow.showAtLocation(anchorView, Gravity.NO_GRAVITY, x, y)
-    }
-
-    private fun showLockSetupDialog(item: NoteItem) {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_pin_entry, null)
-        val tvTitle = dialogView.findViewById<TextView>(R.id.tvTitle)
-        val tvMessage = dialogView.findViewById<TextView>(R.id.tvMessage)
-        val etPin = dialogView.findViewById<EditText>(R.id.etPin)
-        val btnConfirm = dialogView.findViewById<TextView>(R.id.btnConfirm)
-        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
-
-        tvTitle.text = "Protect Folder"
-        tvMessage.visibility = View.VISIBLE
-        tvMessage.text = "Set a PIN for '${item.name}'.\nLeave empty to remove protection."
-        btnConfirm.text = "Save"
-        etPin.hint = "PIN"
-
-        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-
-        btnConfirm.setOnClickListener {
-            val pin = etPin.text.toString()
-
-            if (pin.isNotEmpty()) {
-                if (pin.length >= 4) {
-                    // Lock Logic
-                    lifecycleScope.launch(Dispatchers.IO) {
-                        if (!isDriveMode) {
-                            val newPath = localServiceHelper.moveFolderToPrivate(item.name)
-                            if (newPath != null) {
-                                securityStorage.setPassword(newPath, pin)
-                                securityStorage.setPassword(item.id, "")
-                            } else {
-                                securityStorage.setPassword(item.id, pin)
-                            }
-                        } else {
-                            securityStorage.setPassword(item.id, pin)
-                        }
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(this@MainActivity, "Folder Locked", Toast.LENGTH_SHORT).show()
-                            loadContent()
-                            dialog.dismiss()
-                        }
+                // HATA TESPİTİ
+                when {
+                    msg.contains("API key", true) || msg.contains("403") -> {
+                        uiErrorTitle = "Invalid API Key"
+                        uiErrorDescription = "Please check your settings."
                     }
-                } else {
-                    Toast.makeText(this, "PIN must be at least 4 digits", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                // Unlock Logic
-                lifecycleScope.launch(Dispatchers.IO) {
-                    if (!isDriveMode) {
-                        val newPath = localServiceHelper.moveFolderToPublic(item.name)
+                    msg.contains("quota", true) || msg.contains("429") -> {
+                        uiErrorTitle = "Quota Exceeded"
+                        uiErrorDescription = "Limit reached. Try again later."
                     }
-                    securityStorage.setPassword(item.id, "")
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@MainActivity, "Folder Unlocked", Toast.LENGTH_SHORT).show()
-                        loadContent()
-                        dialog.dismiss()
+                    msg.contains("Connect", true) || msg.contains("UnknownHost") -> {
+                        uiErrorTitle = "No Internet"
+                        uiErrorDescription = "Check your connection."
+                    }
+                    msg.contains("missing", true) -> {
+                        uiErrorTitle = "Missing API Key"
+                        uiErrorDescription = "Enter Key in Settings."
+                    }
+                    msg.contains("found", true) || msg.contains("404") -> {
+                        uiErrorTitle = "Model Unavailable"
+                        uiErrorDescription = "Gemini-3 is not ready."
+                    }
+                    else -> {
+                        uiErrorTitle = "Process Failed"
+                        uiErrorDescription = "Error occurred."
                     }
                 }
-            }
-        }
-        btnCancel.setOnClickListener { dialog.dismiss() }
-
-        dialog.setOnShowListener {
-            etPin.requestFocus()
-            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-            imm.showSoftInput(etPin, InputMethodManager.SHOW_IMPLICIT)
-        }
-        dialog.show()
-    }
-
-    private fun showUnlockDialog(item: NoteItem) {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_pin_entry, null)
-        val tvTitle = dialogView.findViewById<TextView>(R.id.tvTitle)
-        val tvMessage = dialogView.findViewById<TextView>(R.id.tvMessage)
-        val etPin = dialogView.findViewById<EditText>(R.id.etPin)
-        val btnConfirm = dialogView.findViewById<TextView>(R.id.btnConfirm)
-        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
-
-        tvTitle.text = "Locked Folder"
-        tvMessage.visibility = View.GONE
-        btnConfirm.text = "Unlock"
-        etPin.hint = "PIN"
-
-        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-
-        btnConfirm.setOnClickListener {
-            val pin = etPin.text.toString()
-            if (securityStorage.checkPassword(item.id, pin)) {
-                if (isDriveMode) {
-                    driveBreadcrumbs.add(item.name)
-                    currentDriveId = item.id
-                    loadContent()
-                } else {
-                    currentLocalDir = File(item.id)
-                    loadContent()
-                }
-                dialog.dismiss()
-            } else {
-                Toast.makeText(this, "Wrong Password", Toast.LENGTH_SHORT).show()
-                etPin.setText("")
-            }
-        }
-        btnCancel.setOnClickListener { dialog.dismiss() }
-
-        dialog.setOnShowListener {
-            etPin.requestFocus()
-            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-            imm.showSoftInput(etPin, InputMethodManager.SHOW_IMPLICIT)
-        }
-        dialog.show()
-    }
-
-    // --- STANDARD UI LOGIC ---
-    private fun openEditor(item: NoteItem?) {
-        val intent = Intent(this, EditorActivity::class.java)
-        if (item != null) {
-            intent.putExtra("NOTE_TITLE", item.name)
-            intent.putExtra("NOTE_ID", item.id)
-
-            // File reading should be in background
-            lifecycleScope.launch(Dispatchers.IO) {
-                val content = if (!isDriveMode) {
-                    localServiceHelper.readFile(item.id)
-                } else {
-                    driveServiceHelper?.readFile(item.id) ?: ""
-                }
+            } finally {
                 withContext(Dispatchers.Main) {
-                    intent.putExtra("NOTE_CONTENT", content)
-                    editorLauncher.launch(intent)
+                    if (isError) {
+                        // --- HATA DURUMU ---
+                        lottieGemini.pauseAnimation()
+
+                        tvGeminiStatus.text = uiErrorTitle
+                        tvGeminiStatus.setTextColor(getColor(R.color.text_color))
+
+                        tvGeminiAction.text = "$uiErrorDescription\n\n(Tap anywhere to close)"
+                        tvGeminiAction.setTextColor(getColor(R.color.text_color))
+                        tvGeminiAction.visibility = View.VISIBLE
+
+                        geminiLoadingContainer.setOnClickListener {
+                            geminiLoadingContainer.visibility = View.GONE
+
+                            val timestamp = java.text.SimpleDateFormat("yyyy.MM.dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+                            val defaultTitle = "Voice Note $timestamp"
+                            val errorBody = "(Transcription failed: $uiErrorDescription)"
+
+                            saveAndNavigateToVoiceFolder(audioFile, defaultTitle, errorBody)
+                        }
+
+                    } else {
+                        // --- BAŞARI DURUMU ---
+                        geminiLoadingContainer.visibility = View.GONE
+
+                        val finalTitleToSave = if (finalTitle.isNotBlank()) finalTitle else "Voice Note " + java.text.SimpleDateFormat("yyyy.MM.dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+
+                        saveAndNavigateToVoiceFolder(audioFile, finalTitleToSave, finalBody)
+                    }
                 }
             }
-        } else {
-            editorLauncher.launch(intent)
         }
     }
 
@@ -923,65 +241,726 @@ class MainActivity : AppCompatActivity() {
             val data = result.data ?: return@registerForActivityResult
             val originalId = data.getStringExtra("NOTE_ID")
             val shouldDelete = data.getBooleanExtra("REQUEST_DELETE", false)
+            val title = data.getStringExtra("NOTE_TITLE") ?: "Untitled"
+            val content = data.getStringExtra("NOTE_CONTENT") ?: ""
+            val colorHex = data.getStringExtra("NOTE_COLOR")
 
             if (shouldDelete && originalId != null) {
                 deleteSingleFile(originalId)
             } else {
-                val title = data.getStringExtra("NOTE_TITLE") ?: "Untitled"
-                val content = data.getStringExtra("NOTE_CONTENT") ?: ""
-                val colorHex = data.getStringExtra("NOTE_COLOR")
-                saveNote(title, content, originalId, colorHex)
+                lifecycleScope.launch(Dispatchers.IO) {
+                    // --- AKILLI KAYIT KONTROLÜ ---
+                    // Eğer bu var olan bir not ise (originalId != null),
+                    // İçeriğin gerçekten değişip değişmediğini kontrol et.
+                    var hasChanged = true
+
+                    if (originalId != null) {
+                        try {
+                            // 1. Dosyadaki mevcut içeriği oku
+                            val oldContent = if (isDriveMode) {
+                                driveServiceHelper?.readFile(originalId) ?: ""
+                            } else {
+                                localServiceHelper.readFile(originalId)
+                            }
+
+                            // 2. Listedeki eski başlığı bul
+                            val oldNoteItem = currentNotes.find { it.id == originalId }
+                            val oldTitleRaw = oldNoteItem?.name ?: ""
+
+                            // Başlıkların sonundaki .md uzantılarını temizleyip karşılaştır
+                            val cleanOldTitle = oldTitleRaw.removeSuffix(".md").trim()
+                            val cleanNewTitle = title.removeSuffix(".md").trim()
+
+                            // 3. İçerik ve Başlık Aynı mı?
+                            if (oldContent == content && cleanOldTitle == cleanNewTitle) {
+                                // İçerik ve başlık aynıysa, sadece renk değişmiş olabilir.
+                                // Eğer renk de değişmediyse veya önemsizse KAYDETME.
+                                // Renk kontrolünü de ekleyelim:
+                                val oldColorInt = oldNoteItem?.color
+                                val newColorInt = if (colorHex != null) Color.parseColor(colorHex) else oldColorInt
+
+                                if (oldColorInt == newColorInt) {
+                                    hasChanged = false
+                                }
+                            }
+                        } catch (e: Exception) {
+                            // Okuma hatası olursa güvenli tarafı seçip kaydedelim
+                            hasChanged = true
+                        }
+                    }
+
+                    // Sadece değişiklik varsa veya yeni bir not ise kaydet
+                    if (hasChanged) {
+                        saveNote(title, content, originalId, colorHex)
+                    }
+                }
             }
         }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // Tema ayarları
+        val prefs = getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        val themeMode = prefs.getInt("theme_mode", androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(themeMode)
+
+        super.onCreate(savedInstanceState)
+
+        // Status bar ayarları
+        window.statusBarColor = androidx.core.content.ContextCompat.getColor(this, R.color.background_color)
+        val isNightMode = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        window.decorView.systemUiVisibility = if (!isNightMode) android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else 0
+
+        // --- KRİTİK KONTROL BAŞLANGICI ---
+        val userPrefs = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+        val isOnboardingDone = userPrefs.getBoolean("is_onboarding_done", false)
+
+        if (!isOnboardingDone) {
+            // Eğer onboarding yapılmadıysa WelcomeActivity'i aç
+            startActivity(Intent(this, WelcomeActivity::class.java))
+            finish()
+            return // <--- BU SATIR ÇOK ÖNEMLİ! Kodun aşağıya devam etmesini engeller.
+        }
+        // --- KRİTİK KONTROL BİTİŞİ ---
+
+        setContentView(R.layout.activity_main)
+
+        handleWidgetIntent(intent)
+
+        // Padding Fix
+        val bottomContainer = findViewById<LinearLayout>(R.id.bottomActionContainer)
+        val initialBottomPadding = bottomContainer.paddingBottom
+
+        ViewCompat.setOnApplyWindowInsetsListener(bottomContainer) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, initialBottomPadding + bars.bottom)
+            insets
+        }
+
+        localServiceHelper = LocalServiceHelper(this)
+        colorStorage = ColorStorage(this)
+        securityStorage = SecurityStorage(this)
+        currentLocalDir = localServiceHelper.getRootFolder()
+
+        // checkOnboarding() çağrısını sildik çünkü yukarıda hallettik.
+        setupUI()
+        setupBottomActions()
+        setupAdapters()
+        setupBackNavigation()
+
+        // İzin kontrolü (Sadece onboarding bittiyse çalışır)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                intent.data = Uri.parse("package:$packageName")
+                startActivity(intent)
+            }
+        }
+    }
+
+
+    override fun onResume() {
+        super.onResume()
+        val prefsUser = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+        userName = prefsUser.getString("user_name", "User") ?: "User"
+
+        val prefsSettings = getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        val savedGridMode = prefsSettings.getBoolean("grid_mode", false)
+        if (isGridMode != savedGridMode) {
+            isGridMode = savedGridMode
+            updateLayoutManager()
+        }
+
+        if (::localServiceHelper.isInitialized) loadContent()
+    }
+
+    private fun checkOnboarding() {
+        val prefs = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+        if (prefs.getString("user_name", null) == null) {
+            startActivity(Intent(this, WelcomeActivity::class.java))
+            finish()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent) // Intent'i güncelle
+        handleWidgetIntent(intent)
+    }
+
+    // --- WIDGET ENTEGRASYONU ---
+
+    // Widget'tan gelen isteği karşıla
+// 1. handleWidgetIntent GÜNCEL HALİ
+    private fun handleWidgetIntent(intent: Intent?) {
+        if (intent == null) return
+
+        when (intent.action) {
+            "com.ghostyapps.heynotes.ACTION_QUICK_VOICE" -> {
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    // Artık sınıf ismi dosya ismiyle aynı: VoiceRecorderDialog
+                    val voiceIntent = Intent(this, VoiceRecorderDialog::class.java)
+                    voiceNoteLauncher.launch(voiceIntent)
+                }, 300)
+            }
+            "com.ghostyapps.heynotes.ACTION_QUICK_TEXT" -> {
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    openQuickEditor()
+                }, 300)
+            }
+        }
+    }
+
+    // 2. setupBottomActions İÇİNDEKİ SES BUTONU KISMI
+    // (Bunu setupBottomActions fonksiyonunun içinde bulup değiştir)
+    /* actionVoiceNote.setOnClickListener {
+        if (isSelectionMode) return@setOnClickListener
+        // Burada da VoiceRecorderDialog sınıfını çağırıyoruz
+        val intent = Intent(this, VoiceRecorderDialog::class.java)
+        voiceNoteLauncher.launch(intent)
+    }
+    */
+
+    // Bu fonksiyonu Main Activity'ye ekle
+    private fun showVoiceRecorderDialog() {
+        if (checkPermissions()) {
+            val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_voice_recorder, null)
+            val dialog = AlertDialog.Builder(this).setView(dialogView).create()
+            dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+            // --- BURAYA DİKKAT ---
+            // dialog_voice_recorder içindeki kodlarını (Lottie, startRecording vb.)
+            // buraya KOPYALAMALISIN.
+            // (Mevcut btnVoiceNote.setOnClickListener içindeki her şeyi buraya al)
+
+            dialog.show()
+        } else {
+            requestPermissions()
+        }
+    }
+    private fun openQuickEditor() {
+        val timestamp = dateFormat.format(java.util.Date())
+        val intent = Intent(this, EditorActivity::class.java)
+
+        // Hızlı not için isim ve yol
+        val fileName = "Note $timestamp"
+        intent.putExtra("FILE_NAME", fileName)
+        intent.putExtra("FILE_PATH", File(localServiceHelper.getRootFolder(), "$fileName.md").absolutePath)
+
+        // Editor'ü başlat
+        editorLauncher.launch(intent)
+    }
+
+    private fun setupUI() {
+        tvAppTitle = findViewById(R.id.tvAppTitle)
+        tvGreeting = findViewById(R.id.tvGreeting)
+        tvSubtitle = findViewById(R.id.tvSubtitle)
+        layoutFolderSelector = findViewById(R.id.layoutFolderSelector)
+
+        bottomActionContainer = findViewById(R.id.bottomActionContainer)
+
+        selectionBar = findViewById(R.id.selectionBar)
+        btnBulkMove = findViewById(R.id.btnBulkMove)
+        btnBulkDelete = findViewById(R.id.btnBulkDelete)
+
+        geminiLoadingContainer = findViewById(R.id.geminiLoadingContainer)
+        lottieGemini = findViewById(R.id.lottieGemini)
+        tvGeminiStatus = findViewById(R.id.tvGeminiStatus)
+        tvGeminiAction = findViewById(R.id.tvGeminiAction)
+
+        findViewById<ImageView>(R.id.ivHeaderGraphic).setOnClickListener { showSettingsMenu(it) }
+
+        layoutFolderSelector.setOnClickListener { showFolderSelectionDialog() }
+
+        btnBulkMove.setOnClickListener { showBulkMoveDialog() }
+        btnBulkDelete.setOnClickListener { showDeleteConfirmation() }
+    }
+
+    private fun setupBottomActions() {
+        val actionNewNote = findViewById<View>(R.id.actionNewNote)
+        val actionVoiceNote = findViewById<View>(R.id.actionVoiceNote) // Değişken adı bu
+        val actionNewFolder = findViewById<View>(R.id.actionNewFolder)
+
+        actionNewNote.setOnClickListener {
+            if (isSelectionMode) return@setOnClickListener
+            val intent = Intent(this, EditorActivity::class.java)
+            val activeFolder = currentFolders.find { it.isActive }
+            if (activeFolder != null && activeFolder.id != "ROOT" && activeFolder.id != "favorites") {
+                intent.putExtra("FOLDER_ID", activeFolder.id)
+            }
+            editorLauncher.launch(intent)
+        }
+
+        // --- HATA BURADAYDI, DÜZELTİLDİ ---
+        actionVoiceNote.setOnClickListener {
+            if (isSelectionMode) return@setOnClickListener
+            // Artık VoiceRecorderActivity yok, VoiceRecorderDialog var
+            val intent = Intent(this, VoiceRecorderDialog::class.java)
+            voiceNoteLauncher.launch(intent)
+        }
+        // ----------------------------------
+
+        actionNewFolder.setOnClickListener {
+            if (isSelectionMode) return@setOnClickListener
+            showCreateFolderDialog()
+        }
+    }
+
+
+
+
+
+    // Dosya isminde olmaması gereken karakterleri temizler
+    private fun getSafeFileName(input: String): String {
+        return input.replace(":", " -")
+            .replace("/", "_")
+            .replace("\\", "_")
+            .trim()
+    }
+
+    /**
+     * TEK VE NİHAİ KAYDETME FONKSİYONU
+     * title = "" diyerek varsayılan değer atadık.
+     * Böylece eski kod (satır 104) başlık göndermese bile burası çalışır.
+     */
+    private fun saveAndNavigateToVoiceFolder(audioFile: File, title: String = "", content: String = "") {
+        val voiceFolder = File(getFilesDir(), "Voice Notes")
+        if (!voiceFolder.exists()) {
+            voiceFolder.mkdirs()
+        }
+
+        // 1. BAŞLIK BELİRLEME
+        // Eğer Gemini'den başlık geldiyse onu temizle, gelmediyse (boşsa) Tarih ata.
+        val timestamp = java.text.SimpleDateFormat("yyyy.MM.dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+
+        val displayTitle = if (title.isNotEmpty()) title else "Voice Note $timestamp"
+        val safeFileName = getSafeFileName(displayTitle)
+
+        // Dosya adı çakışmasını önlemek için (Aynı saniyede 2 dosya olmaz ama yine de önlem)
+        val finalFileName = if (safeFileName.isNotEmpty()) safeFileName else "Voice Note $timestamp"
+        val finalFile = File(voiceFolder, "$finalFileName.json")
+
+        try {
+            // 2. JSON OLUŞTURMA
+            val jsonObject = org.json.JSONObject()
+            jsonObject.put("title", displayTitle) // İçeride orijinal başlık (örn: "Konu: Önemli") kalabilir
+            jsonObject.put("content", content)
+            jsonObject.put("timestamp", System.currentTimeMillis())
+            jsonObject.put("audioPath", audioFile.absolutePath)
+
+            // Dosyayı yaz
+            java.io.FileWriter(finalFile).use { it.write(jsonObject.toString()) }
+
+            // UI Güncelleme
+            runOnUiThread {
+                Toast.makeText(this, "Saved: $safeFileName", Toast.LENGTH_SHORT).show()
+                loadContent() // Listeyi yenile
+            }
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+            runOnUiThread {
+                Toast.makeText(this, "Error saving note", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+
+
+
+
+    // --- NAVİGASYON YARDIMCISI ---
+    private fun navigateToFolderAndRefresh(folderFile: File, folderName: String) {
+        // Hedef klasörü ayarla
+        currentLocalDir = folderFile
+
+        // Eğer Drive modundaysak çıkalım (Ses notları yerel çalışır)
+        isDriveMode = false
+
+        // Listeyi yükle
+        loadContent()
+
+    }
+
+
+    private fun showGeminiLoading(initialMessage: String) {
+        geminiLoadingContainer.bringToFront()
+        geminiLoadingContainer.requestLayout()
+
+        geminiLoadingContainer.visibility = View.VISIBLE
+        geminiLoadingContainer.alpha = 0f
+        geminiLoadingContainer.animate().alpha(1f).setDuration(300).start()
+        tvGeminiStatus.text = initialMessage
+        tvGeminiStatus.setTextColor(getColor(R.color.text_color))
+        tvGeminiAction.visibility = View.GONE
+        lottieGemini.playAnimation()
+    }
+
+    private fun updateGeminiStatus(newMessage: String) {
+        runOnUiThread { tvGeminiStatus.text = newMessage }
+    }
+
+    private fun showGeminiError(errorMessage: String) {
+        runOnUiThread {
+            lottieGemini.pauseAnimation()
+            tvGeminiStatus.text = errorMessage
+            tvGeminiAction.visibility = View.VISIBLE
+            val dismissAction = View.OnClickListener { hideGeminiLoading() }
+            geminiLoadingContainer.setOnClickListener(dismissAction)
+        }
+    }
+
+    private fun hideGeminiLoading() {
+        runOnUiThread {
+            lottieGemini.cancelAnimation()
+            geminiLoadingContainer.animate().alpha(0f).setDuration(300).withEndAction {
+                geminiLoadingContainer.visibility = View.GONE
+            }.start()
+        }
+    }
+
+    private fun toggleSelection(item: NoteItem) {
+        item.isSelected = !item.isSelected
+        checkSelectionState()
+        notesAdapter.notifyDataSetChanged()
+    }
+
+    private fun checkSelectionState() {
+        val anyNotes = currentNotes.any { it.isSelected }
+        isSelectionMode = anyNotes
+        updateSelectionModeUI()
+    }
+
+    private fun updateSelectionModeUI() {
+        if (isSelectionMode) {
+            if (selectionBar.visibility != View.VISIBLE) {
+                selectionBar.visibility = View.VISIBLE
+                selectionBar.alpha = 0f
+                selectionBar.animate().alpha(1f).setDuration(200).start()
+                bottomActionContainer.animate().alpha(0.3f).setDuration(200).start()
+                bottomActionContainer.isClickable = false
+            }
+        } else {
+            if (selectionBar.visibility == View.VISIBLE) {
+                selectionBar.animate().alpha(0f).setDuration(200).withEndAction {
+                    selectionBar.visibility = View.GONE
+                }.start()
+                bottomActionContainer.animate().alpha(1f).setDuration(200).start()
+                bottomActionContainer.isClickable = true
+            }
+        }
+    }
+
+    private fun showDeleteConfirmation() {
+        val notesToDelete = currentNotes.filter { it.isSelected }
+        if (notesToDelete.isEmpty()) return
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_delete_confirm, null)
+        val tvMessage = dialogView.findViewById<TextView>(R.id.tvMessage)
+        val btnDelete = dialogView.findViewById<TextView>(R.id.btnDelete)
+        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
+        tvMessage.text = "Delete ${notesToDelete.size} items?"
+        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        btnDelete.setOnClickListener { deleteSelectedItems(); dialog.dismiss() }
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        dialog.show()
+    }
+
+    private fun deleteSelectedItems() {
+        val notesToDelete = currentNotes.filter { it.isSelected }
+        lifecycleScope.launch(Dispatchers.IO) {
+            notesToDelete.forEach { item ->
+                if (isDriveMode) driveServiceHelper?.deleteFile(item.id)
+                else localServiceHelper.deleteFile(item.id)
+            }
+            withContext(Dispatchers.Main) { loadContent() }
+        }
+    }
+
+    private fun showSingleDeleteConfirmation(item: NoteItem) {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_delete_confirm, null)
+        val tvMessage = dialogView.findViewById<TextView>(R.id.tvMessage)
+        val btnDelete = dialogView.findViewById<TextView>(R.id.btnDelete)
+        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
+        tvMessage.text = "Delete '${item.name}'?"
+        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        btnDelete.setOnClickListener {
+            dialog.dismiss()
+            if (item.isLocked) showPinDialogForSingleDeletion(item)
+            else deleteSingleFile(item.id)
+        }
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        dialog.show()
+    }
+
+
+
+    private fun showPinDialogForSingleDeletion(item: NoteItem) {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_pin_entry, null)
+        val btnConfirm = dialogView.findViewById<TextView>(R.id.btnConfirm)
+        val etPin = dialogView.findViewById<EditText>(R.id.etPin)
+        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
+        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        btnConfirm.setOnClickListener {
+            if (securityStorage.checkPassword(item.id, etPin.text.toString())) {
+                deleteSingleFile(item.id)
+                dialog.dismiss()
+            } else { Toast.makeText(this, "Wrong PIN", Toast.LENGTH_SHORT).show() }
+        }
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        dialog.show()
+    }
+
+    private fun showCreateFolderDialog() {
+        // XML'de checkbox olmasına gerek yok, kodla eklemeye de gerek yok.
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_create_folder, null)
+        val etFolderName = dialogView.findViewById<EditText>(R.id.etFolderName)
+        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
+        val btnCreate = dialogView.findViewById<TextView>(R.id.btnCreate)
+        val colorContainer = dialogView.findViewById<LinearLayout>(R.id.colorContainer)
+
+        // --- RENK SEÇİMİ (Aynı kalıyor) ---
+        val colors = listOf(
+            Color.parseColor("#607D8B"), Color.parseColor("#EF5350"),
+            Color.parseColor("#FFA726"), Color.parseColor("#FFEE58"),
+            Color.parseColor("#66BB6A"), Color.parseColor("#42A5F5"),
+            Color.parseColor("#AB47BC"), Color.parseColor("#EC407A"),
+            Color.parseColor("#8D6E63")
+        )
+        var selectedColor = colors[0]
+        val colorViews = mutableListOf<View>()
+        for (colorInt in colors) {
+            val colorView = View(this)
+            val size = (24 * resources.displayMetrics.density).toInt()
+            val margin = (6 * resources.displayMetrics.density).toInt()
+            val params = LinearLayout.LayoutParams(size, size).apply { setMargins(margin, 0, margin, 0) }
+            colorView.layoutParams = params
+            val drawable = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(colorInt)
+            }
+            colorView.background = drawable
+            colorView.setOnClickListener {
+                selectedColor = colorInt
+                updateColorBorders(colorViews, colors, selectedColor)
+            }
+            colorContainer.addView(colorView)
+            colorViews.add(colorView)
+        }
+        updateColorBorders(colorViews, colors, selectedColor)
+
+        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+
+        btnCreate.setOnClickListener {
+            val folderName = etFolderName.text.toString().trim()
+            if (folderName.isNotEmpty()) {
+                // Sadece normal klasör oluşturuyoruz
+                val colorHex = String.format("#%06X", (0xFFFFFF and selectedColor))
+                createFolder(folderName, colorHex)
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
+    }
+
+
+    // --- YARDIMCI: RENK ÇERÇEVESİ GÜNCELLEME ---
+    private fun updateColorBorders(views: List<View>, colors: List<Int>, selected: Int) {
+        for (i in views.indices) {
+            val view = views[i]
+            val color = colors[i]
+
+            val drawable = android.graphics.drawable.GradientDrawable()
+            drawable.shape = android.graphics.drawable.GradientDrawable.OVAL
+            drawable.setColor(color)
+
+            if (color == selected) {
+                // SEÇİLİ İSE: Etrafına koyu gri belirgin bir çerçeve çiz (3dp kalınlık)
+                val strokeColor = Color.parseColor("#424242")
+                val strokeWidth = (3 * resources.displayMetrics.density).toInt()
+                drawable.setStroke(strokeWidth, strokeColor)
+            }
+
+            view.background = drawable
+        }
+    }
+
+
+    // GÜNCELLENMİŞ VERSİYON (Tek Parametre)
+    private fun createLockedFolder(name: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val folderId: String?
+
+            if (isDriveMode) {
+                folderId = driveServiceHelper?.createFolder(currentDriveId ?: rootDriveId!!, name)
+            } else {
+                localServiceHelper.createFolder(currentLocalDir!!, name)
+                val newFolder = File(currentLocalDir, name)
+                folderId = newFolder.absolutePath
+            }
+
+            if (folderId != null) {
+                // Şifre olarak sembolik "MASTER" kaydediyoruz.
+                // Asıl kontrolü getMasterPin() ile yapacağız.
+                securityStorage.setPassword(folderId, "MASTER")
+                // Gizli klasör rengini Siyah yapıyoruz
+                colorStorage.saveColor(folderId, "#000000")
+            }
+
+            withContext(Dispatchers.Main) {
+                loadContent()
+                Toast.makeText(this@MainActivity, "Secret Folder Created", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+
+    private fun createFolder(name: String, colorHex: String?) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (isDriveMode) {
+                val newId = driveServiceHelper?.createFolder(rootDriveId!!, name)
+                if (newId != null && colorHex != null) colorStorage.saveColor(newId, colorHex)
+            } else {
+                val rootDir = File(filesDir, "HeyNotes")
+                if (!rootDir.exists()) rootDir.mkdirs()
+                localServiceHelper.createFolder(rootDir, name)
+                if (colorHex != null) {
+                    val newFolder = File(rootDir, name)
+                    colorStorage.saveColor(newFolder.absolutePath, colorHex)
+                }
+            }
+            withContext(Dispatchers.Main) { loadContent() }
+        }
+    }
+
+    private fun showColorPopup(item: NoteItem, anchorView: View) {
+        val inflater = LayoutInflater.from(this)
+        val popupView = inflater.inflate(R.layout.popup_color_picker, null)
+        val container = popupView.findViewById<LinearLayout>(R.id.colorContainer)
+        val popupWindow = PopupWindow(popupView, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true)
+        popupWindow.elevation = 10f
+        val colors = listOf("#BDBDBD", "#616161", "#EF5350", "#FFA726", "#FFEE58", "#66BB6A", "#42A5F5", "#AB47BC", "#EC407A")
+        for (colorHex in colors) {
+            val dot = View(this)
+            val size = (24 * resources.displayMetrics.density).toInt()
+            val params = LinearLayout.LayoutParams(size, size).apply { setMargins(10,0,10,0) }
+            dot.layoutParams = params
+            val bg = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.shape_circle)?.mutate()
+            bg?.setTint(Color.parseColor(colorHex))
+            dot.background = bg
+            dot.setOnClickListener {
+                colorStorage.saveColor(item.id, colorHex)
+                popupWindow.dismiss()
+                loadContent()
+            }
+            container.addView(dot)
+        }
+        popupWindow.showAsDropDown(anchorView, 0, -20)
+    }
+
+    // GÜNCELLENMİŞ KİLİT AÇMA (Master PIN Kontrolü)
+    private fun showUnlockDialog(item: NoteItem) {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_pin_entry, null)
+        val btnConfirm = dialogView.findViewById<TextView>(R.id.btnConfirm)
+        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
+        val etPin = dialogView.findViewById<EditText>(R.id.etPin)
+
+        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        btnConfirm.setOnClickListener {
+            val enteredPin = etPin.text.toString()
+            val masterPin = getMasterPin()
+
+            // DÜZELTME BURADA: Girilen PIN, Master PIN ile eşleşiyor mu?
+            if (masterPin != null && enteredPin == masterPin) {
+                dialog.dismiss()
+                // Şifre Doğru -> İçeri Gir
+                handleNavigation(item, forceUnlock = true)
+            } else {
+                Toast.makeText(this, "Wrong PIN", Toast.LENGTH_SHORT).show()
+            }
+        }
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        dialog.show()
+    }
+
+
+    private fun openEditor(item: NoteItem?) {
+        val intent = Intent(this, EditorActivity::class.java)
+        if (item != null) {
+            intent.putExtra("NOTE_TITLE", item.name)
+            intent.putExtra("NOTE_ID", item.id)
+            intent.putExtra("NOTE_TIMESTAMP", item.timestamp)
+            lifecycleScope.launch(Dispatchers.IO) {
+                val content = if (!isDriveMode) localServiceHelper.readFile(item.id) else driveServiceHelper?.readFile(item.id) ?: ""
+                withContext(Dispatchers.Main) {
+                    intent.putExtra("NOTE_CONTENT", content)
+                    editorLauncher.launch(intent)
+                }
+            }
+        } else { editorLauncher.launch(intent) }
     }
 
     private fun deleteSingleFile(id: String) {
-        // CoroutineScope yerine lifecycleScope kullanıyoruz
         lifecycleScope.launch(Dispatchers.IO) {
-            if (isDriveMode) {
-                driveServiceHelper?.deleteFile(id)
-            } else {
-                localServiceHelper.deleteFile(id)
-            }
-
-            // UI güncellemesi için Ana Thread'e dön
-            withContext(Dispatchers.Main) {
-                loadContent()
-                Toast.makeText(this@MainActivity, "Discarded.", Toast.LENGTH_SHORT).show()
-            }
+            if (isDriveMode) driveServiceHelper?.deleteFile(id) else localServiceHelper.deleteFile(id)
+            withContext(Dispatchers.Main) { loadContent() }
         }
     }
+
     private fun saveNote(title: String, content: String, originalId: String?, colorHex: String?) {
-        // CoroutineScope yerine lifecycleScope kullanıyoruz
         lifecycleScope.launch(Dispatchers.IO) {
             if (isDriveMode) {
                 if (originalId != null) {
-                    // Güncelleme
                     driveServiceHelper?.updateFile(originalId, title, content)
                     if (colorHex != null) colorStorage.saveColor(originalId, colorHex)
                 } else {
-                    // Yeni Oluşturma
                     val newId = driveServiceHelper?.createNote(currentDriveId!!, title, content)
                     if (newId != null && colorHex != null) colorStorage.saveColor(newId, colorHex)
                 }
             } else {
                 if (originalId != null) {
-                    // Güncelleme
-                    localServiceHelper.updateNote(originalId, title, content)
+                    // --- SES DOSYASI SENKRONİZASYONU ---
+                    // Eğer başlık değiştiyse, bağlı olan ses dosyasını da taşı ve içeriği güncelle
+                    var finalContent = content
+                    val oldFile = File(originalId)
+                    val oldTitle = oldFile.nameWithoutExtension
+                    val cleanNewTitle = title.trim()
+
+                    if (oldTitle != cleanNewTitle) {
+                        val parentDir = oldFile.parentFile
+                        val oldAudio = File(parentDir, "$oldTitle.m4a")
+
+                        if (oldAudio.exists()) {
+                            val newAudio = File(parentDir, "$cleanNewTitle.m4a")
+                            // Ses dosyasını yeniden adlandır
+                            if (oldAudio.renameTo(newAudio)) {
+                                // Notun içindeki referans metnini güncelle
+                                finalContent = finalContent.replace(
+                                    "Audio Note: ${oldAudio.name}",
+                                    "Audio Note: ${newAudio.name}"
+                                )
+                            }
+                        }
+                    }
+                    // -----------------------------------
+
+                    localServiceHelper.updateNote(originalId, title, finalContent)
                     if (colorHex != null) colorStorage.saveColor(originalId, colorHex)
                 } else {
-                    // Yeni Oluşturma
                     localServiceHelper.saveNote(currentLocalDir!!, title, content)
                     val safeTitle = if (title.endsWith(".md")) title else "$title.md"
                     val newPath = File(currentLocalDir, safeTitle).absolutePath
                     if (colorHex != null) colorStorage.saveColor(newPath, colorHex)
                 }
             }
-
-            // İşlem bitince listeyi yenile
-            withContext(Dispatchers.Main) {
-                loadContent()
-            }
+            withContext(Dispatchers.Main) { loadContent() }
         }
     }
     private fun setupBackNavigation() {
@@ -990,10 +969,8 @@ class MainActivity : AppCompatActivity() {
                 if (isSelectionMode) {
                     isSelectionMode = false
                     currentNotes.forEach { it.isSelected = false }
-                    currentFolders.forEach { it.isSelected = false }
                     notesAdapter.notifyDataSetChanged()
-                    folderAdapter.notifyDataSetChanged()
-                    updateFabIcon()
+                    updateSelectionModeUI()
                     return
                 }
                 if (isDriveMode) {
@@ -1001,123 +978,646 @@ class MainActivity : AppCompatActivity() {
                         currentDriveId = rootDriveId
                         driveBreadcrumbs.clear(); driveBreadcrumbs.add("Main")
                         loadContent()
-                    } else {
-                        finish()
-                    }
+                    } else { finish() }
                 } else {
                     if (currentLocalDir != null && currentLocalDir!!.name != "HeyNotes") {
                         currentLocalDir = localServiceHelper.getRootFolder()
                         loadContent()
-                    } else {
-                        finish()
-                    }
+                    } else { finish() }
                 }
             }
         })
     }
 
-    // --- GOOGLE AUTH ---
-    private fun requestSignIn() {
-        val signInOptions = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestEmail().requestScopes(Scope(DriveScopes.DRIVE)).build()
-        val client = GoogleSignIn.getClient(this, signInOptions)
-        signInLauncher.launch(client.signInIntent)
+
+
+
+
+    private fun setupAdapters() {
+        // SADECE NOT LİSTESİ (Yatay liste kodu silindi)
+        recyclerNotes = findViewById(R.id.recyclerNotes)
+        notesAdapter = NotesAdapter(
+            onItemClick = { item -> if (isSelectionMode) toggleSelection(item) else openEditor(item) },
+            onItemLongClick = { item, view -> if (!isSelectionMode) { isSelectionMode = true; toggleSelection(item) } else toggleSelection(item) },
+            onIconClick = { item, view -> if (!isSelectionMode) showColorPopup(item, view) else toggleSelection(item) }
+        )
+        updateLayoutManager()
+        recyclerNotes.adapter = notesAdapter
     }
 
-    private val signInLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == RESULT_OK) {
-            GoogleSignIn.getSignedInAccountFromIntent(result.data)
-                .addOnSuccessListener { account -> initializeDriveService(account) }
-        }
-    }
 
-    private fun initializeDriveService(account: GoogleSignInAccount) {
-        val credential = GoogleAccountCredential.usingOAuth2(this, Collections.singleton(DriveScopes.DRIVE))
-        credential.selectedAccount = account.account
-        val googleDriveService = Drive.Builder(NetHttpTransport(), GsonFactory(), credential)
-            .setApplicationName("HeyNotes").build()
 
-        driveServiceHelper = DriveServiceHelper(googleDriveService)
+    // --- KLASÖR SEÇİMİ DIALOG (GÜNCELLENDİ: HEPSİ BOLD + SEÇİLİ EFEKTİ) ---
+// --- KLASÖR SEÇİMİ DIALOG (GÜNCELLENDİ: ÖZEL İKONLAR) ---
+    private fun showFolderSelectionDialog() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_folder_selection, null)
+        val recyclerView = dialogView.findViewById<RecyclerView>(R.id.rvFolderList)
 
-        // DÜZELTME: lifecycleScope kullanıldı
-        lifecycleScope.launch(Dispatchers.Main) {
-            try {
-                // Arka plan işlerini withContext(IO) içine alıyoruz
-                withContext(Dispatchers.IO) {
-                    rootDriveId = driveServiceHelper?.getOrCreateRootFolder()
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        recyclerView.layoutManager = LinearLayoutManager(this)
+        recyclerView.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_move_folder, parent, false)
+                return object : RecyclerView.ViewHolder(view) {}
+            }
+
+            override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+                val folder = currentFolders[position]
+                val tvName = holder.itemView.findViewById<TextView>(R.id.tvFolderName)
+                val ivIcon = holder.itemView.findViewById<ImageView>(R.id.ivFolderIcon)
+                val context = holder.itemView.context
+
+                tvName.text = folder.name
+
+                // --- 1. İKON SEÇİMİ (YENİ KISIM) ---
+                val iconRes = when {
+                    folder.id == "PRIVATE_ROOT" -> R.drawable.ic_lock_icon
+                    folder.name.contains("Voice Note") -> R.drawable.ic_voice_icon
+                    folder.id == "ROOT" -> R.drawable.ic_home_icon
+                    else -> R.drawable.ic_folder_icon // Diğerleri için Klasör ikonu
                 }
-                currentDriveId = rootDriveId
-                isDriveMode = true
-                driveBreadcrumbs.clear(); driveBreadcrumbs.add("Main")
-                loadContent()
-                Toast.makeText(this@MainActivity, "Connected: ${account.email}", Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                ivIcon.setImageResource(iconRes)
+                // -----------------------------------
+
+                // 2. FONT: HEPSİ HER ZAMAN BOLD OLSUN
+                tvName.alpha = 1f
+                try {
+                    tvName.typeface = ResourcesCompat.getFont(context, R.font.productsans_bold)
+                } catch (e: Exception) {
+                    tvName.setTypeface(null, Typeface.BOLD)
+                }
+
+                // 3. SEÇİLİ OLANIN ARKASINA "PILL" (HAP) EFEKTİ
+                if (folder.isActive) {
+                    val drawable = android.graphics.drawable.GradientDrawable()
+                    drawable.shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                    drawable.cornerRadius = 100f
+
+                    val baseColor = tvName.currentTextColor
+                    val pillColor = androidx.core.graphics.ColorUtils.setAlphaComponent(baseColor, 40)
+                    drawable.setColor(pillColor)
+
+                    holder.itemView.background = drawable
+                } else {
+                    holder.itemView.background = null
+                }
+
+                // İkon Rengi
+                if (folder.color != null) {
+                    ivIcon.setColorFilter(folder.color!!)
+                    ivIcon.alpha = 1f
+                } else {
+                    ivIcon.setColorFilter(Color.GRAY)
+                    ivIcon.alpha = 0.7f
+                }
+
+                holder.itemView.setOnClickListener {
+                    dialog.dismiss()
+                    handleNavigation(folder)
+                }
+
+                holder.itemView.setOnLongClickListener {
+                    // Root ve Voice Note klasörlerine dokunulmasın
+                    if (folder.id != "ROOT" && !folder.name.contains("Voice Note") && folder.id != "PRIVATE_ROOT") {
+                        dialog.dismiss()
+                        showFolderOptions(folder)
+                    }
+                    true
+                }
+            }
+            override fun getItemCount() = currentFolders.size
+        }
+        dialog.show()
+    }
+
+    // --- KLASÖR SEÇENEKLERİ POPUP ---
+// --- KLASÖR SEÇENEKLERİ DIALOG ---
+    // (Popup yerine Dialog kullanıyoruz)
+    private fun showFolderOptions(folder: NoteItem) {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.popup_folder_options, null)
+
+        val btnRename = dialogView.findViewById<LinearLayout>(R.id.btnRename)
+        val btnColor = dialogView.findViewById<LinearLayout>(R.id.btnColor)
+        val btnDelete = dialogView.findViewById<LinearLayout>(R.id.btnDelete)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+
+        // Arka planı şeffaf yapıyoruz ki bizim rounded background (background_popup) görünsün
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        btnRename.setOnClickListener {
+            dialog.dismiss()
+            showRenameFolderDialog(folder)
+        }
+
+        btnColor.setOnClickListener {
+            dialog.dismiss()
+            // Renk seçici popup olduğu için bir referans noktasına ihtiyaç duyar.
+            // Klasör seçici butonunu (layoutFolderSelector) referans alabiliriz.
+            showColorPopup(folder, layoutFolderSelector)
+        }
+
+        btnDelete.setOnClickListener {
+            dialog.dismiss()
+            showSingleDeleteConfirmation(folder)
+        }
+
+        dialog.show()
+    }
+
+
+
+    private fun showRenameFolderDialog(folder: NoteItem) {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_rename_folder, null)
+        val etFolderName = dialogView.findViewById<EditText>(R.id.etFolderName)
+        val btnSave = dialogView.findViewById<TextView>(R.id.btnSave)
+        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
+        etFolderName.setText(folder.name)
+        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        btnSave.setOnClickListener {
+            val newName = etFolderName.text.toString().trim()
+            if (newName.isNotEmpty() && newName != folder.name) {
+                performFolderRename(folder, newName)
+                dialog.dismiss()
             }
         }
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        dialog.show()
     }
-    private fun checkStoragePermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                val uri = Uri.fromParts("package", packageName, null)
-                intent.data = uri
-                startActivity(intent)
+
+    private fun performFolderRename(folder: NoteItem, newName: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                if (isDriveMode) {
+                    driveServiceHelper?.renameFile(folder.id, newName)
+                } else {
+                    val oldFile = File(folder.id)
+                    val newFile = File(oldFile.parent, newName)
+                    if (oldFile.renameTo(newFile)) {
+                        val oldColor = colorStorage.getColor(oldFile.absolutePath)
+                        if (oldColor != null) {
+                            val hexColor = String.format("#%06X", (0xFFFFFF and oldColor))
+                            colorStorage.saveColor(newFile.absolutePath, hexColor)
+                        }
+                    }
+                }
+                withContext(Dispatchers.Main) { loadContent() }
+            } catch (e: Exception) { }
+        }
+    }
+
+    private fun showBulkMoveDialog(itemsToMove: List<NoteItem>? = null) {
+        val selectedNotes = itemsToMove ?: currentNotes.filter { it.isSelected }
+        if (selectedNotes.isEmpty()) return
+
+        // --- 1. LİSTEYİ SIFIRDAN OLUŞTUR (Root'tan Tara) ---
+        val availableFolders = mutableListOf<NoteItem>()
+
+        // A. "Main" (Ana Dizin) seçeneğini her zaman ekle
+        availableFolders.add(NoteItem("Main", true, "ROOT"))
+
+        // B. Root altındaki gerçek klasörleri tara
+        // Nerede olursan ol, her zaman en üst dizindeki klasörleri bulur.
+        if (!isDriveMode) {
+            val rootDir = localServiceHelper.getRootFolder()
+            val files = rootDir.listFiles()
+
+            if (files != null) {
+                // Sadece klasörleri filtrele, alfabetik sırala ve NoteItem'a çevir
+                val realFolders = files.filter { it.isDirectory && !it.name.contains("Voice Note") }
+                    .sortedBy { it.name }
+                    .map { NoteItem(it.name, true, it.absolutePath) }
+
+                availableFolders.addAll(realFolders)
+            }
+        } else {
+            // Drive modundaysak ve o an root listesi elimizde yoksa,
+            // mecburen mevcut listedeki klasörleri kullanırız (Drive async çalıştığı için burada bekletemiyoruz)
+            // Ama genelde Drive modunda da currentFolders iş görür.
+            val driveFolders = currentFolders.filter { !it.isActive && it.id != "ROOT" && !it.name.contains("Voice Note") }
+            availableFolders.addAll(driveFolders)
+        }
+
+        // C. Filtreleme: Klasör kendisini kendi içine taşıyamaz
+        // (Eğer bir klasör seçip taşı diyorsan, hedef listede kendisi olmamalı)
+        val finalFolderList = availableFolders.filter { folder ->
+            val isSelf = selectedNotes.any { it.id == folder.id }
+            !isSelf
+        }.toMutableList()
+
+        // --- DIALOG KURULUMU ---
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_move_bottom_sheet, null)
+        val recyclerView = dialogView.findViewById<RecyclerView>(R.id.rvFolderList)
+        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        recyclerView.layoutManager = LinearLayoutManager(this)
+        recyclerView.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_move_folder, parent, false)
+                return object : RecyclerView.ViewHolder(view) {}
+            }
+
+            override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+                val folder = finalFolderList[position]
+                val tvName = holder.itemView.findViewById<TextView>(R.id.tvFolderName)
+
+                tvName.text = folder.name
+
+                holder.itemView.setOnClickListener {
+                    dialog.dismiss()
+                    performBulkMove(selectedNotes, folder)
+                }
+            }
+
+            override fun getItemCount() = finalFolderList.size
+        }
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        dialog.show()
+    }
+
+    private fun performBulkMove(notes: List<NoteItem>, targetFolder: NoteItem) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            notes.forEach { note ->
+                try {
+                    if (isDriveMode) {
+                        val targetId = if (targetFolder.id == "ROOT") rootDriveId!! else targetFolder.id
+                        driveServiceHelper?.moveFile(note.id, targetId)
+                    } else {
+                        val sourceFile = File(note.id)
+                        val targetDir = if (targetFolder.id == "ROOT") localServiceHelper.getRootFolder() else File(targetFolder.id)
+                        var destFile = File(targetDir, sourceFile.name)
+                        var counter = 1
+                        while (destFile.exists()) {
+                            destFile = File(targetDir, "${sourceFile.nameWithoutExtension} ($counter).md")
+                            counter++
+                        }
+                        sourceFile.copyTo(destFile, overwrite = true)
+                        val audioSource = File(sourceFile.parent, "${sourceFile.nameWithoutExtension}.m4a")
+                        if (audioSource.exists()) {
+                            val audioDest = File(targetDir, destFile.nameWithoutExtension + ".m4a")
+                            audioSource.copyTo(audioDest, overwrite = true)
+                            audioSource.delete()
+                        }
+                        sourceFile.delete()
+                    }
+                } catch (e: Exception) { }
+            }
+            withContext(Dispatchers.Main) {
+                isSelectionMode = false
+                loadContent()
             }
         }
     }
 
-    // --- SETTINGS & THEME MENU ---
+    private fun updateLayoutManager() {
+        notesAdapter.isGridMode = isGridMode
+        recyclerNotes.layoutManager = if (isGridMode) GridLayoutManager(this, 2) else LinearLayoutManager(this)
+        notesAdapter.notifyDataSetChanged()
+    }
+
+    // handleNavigation'ı bul ve başlığını şu şekilde değiştir:
+    private fun handleNavigation(item: NoteItem, forceUnlock: Boolean = false) {
+        // 1. ROOT
+        if (item.id == "ROOT") {
+            if (isDriveMode) { currentDriveId = rootDriveId; driveBreadcrumbs.clear(); driveBreadcrumbs.add("Main") }
+            else { currentLocalDir = localServiceHelper.getRootFolder() }
+            loadContent(); return
+        }
+
+        if (item.isActive) return
+
+        // --- 2. PRIVATE FOLDER KONTROLÜ (YENİ) ---
+        if (item.id == "PRIVATE_ROOT") {
+            val masterPin = getMasterPin()
+
+            if (masterPin == null) {
+                // Durum A: Hiç PIN yok -> "Yeni PIN Oluştur" penceresi aç
+                showSetMasterPinDialog {
+                    // PIN başarıyla oluştu, şimdi içeri al
+                    openPrivateFolder()
+                }
+            } else {
+                // Durum B: PIN var -> "PIN Gir" penceresi aç
+                showUnlockDialog {
+                    // PIN doğru girildi, şimdi içeri al
+                    openPrivateFolder()
+                }
+            }
+            return // İşlemi burada kes, dialog sonucunu bekle
+        }
+
+        // 3. ESKİ KİLİTLİ KLASÖR KONTROLÜ (Varsa)
+        if (item.isLocked && !forceUnlock) {
+            showUnlockDialog(item) // NoteItem alan eski versiyon
+            return
+        }
+
+        // 4. NORMAL YÖNLENDİRME
+        if (isDriveMode) {
+            driveBreadcrumbs.add(item.name)
+            currentDriveId = item.id
+        } else {
+            currentLocalDir = java.io.File(item.id)
+        }
+        loadContent()
+    }
+
+    private fun loadContent() {
+        isSelectionMode = false
+        updateSelectionModeUI()
+        val isRoot = (!isDriveMode && currentLocalDir?.name == "HeyNotes") || (isDriveMode && currentDriveId == rootDriveId)
+
+        // --- Header Mantığı ---
+        var currentFolderColor = Color.BLACK
+        var currentFolderName = "Main"
+
+        if (!isRoot) {
+            val rawName = if (isDriveMode) driveBreadcrumbs.last() else currentLocalDir?.name ?: "Folder"
+            currentFolderName = rawName.replace("!!", "").trim()
+            val currentId = if (isDriveMode) currentDriveId else currentLocalDir?.absolutePath
+
+            // --- GİZLİ KLASÖR KONTROLÜ ---
+            val privateDir = java.io.File(getFilesDir(), "Private Notes")
+            val isPrivate = !isDriveMode && currentLocalDir?.absolutePath == privateDir.absolutePath
+            // -----------------------------
+
+            if (currentId != null) {
+                // Hata riskini sıfıra indirmek için klasik IF-ELSE kullanıyoruz
+                if (currentFolderName.contains("Voice Note")) {
+                    currentFolderColor = Color.parseColor("#FF4B4B")
+                } else if (isPrivate) {
+                    currentFolderColor = Color.BLACK // Gizli klasörse SİYAH
+                } else {
+                    currentFolderColor = colorStorage.getColor(currentId) ?: Color.parseColor("#616161")
+                }
+            }
+        } else {
+            currentFolderName = if (isDriveMode) "Google Drive" else "Main"
+        }
+
+        tvAppTitle.text = "Hey, $userName"
+        tvGreeting.text = "${java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY).let { if(it<12) "Good morning." else if(it<17) "Good afternoon." else if(it<20) "Good evening." else "Good night." }}"
+        tvSubtitle.text = currentFolderName
+        layoutFolderSelector.backgroundTintList = android.content.res.ColorStateList.valueOf(currentFolderColor)
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            // --- Veri Çekme ---
+            val allFoldersRaw: List<NoteItem> = if (isDriveMode) {
+                driveServiceHelper?.listFiles(rootDriveId ?: "")?.filter { it.mimeType.contains("folder") }?.map { NoteItem(it.name, true, it.id) } ?: emptyList()
+            } else {
+                var rootDir = currentLocalDir
+                while (rootDir?.parentFile != null && rootDir.parentFile.name != "0" && rootDir.parentFile.name != "files") {
+                    if (rootDir.name == "HeyNotes") break
+                    rootDir = rootDir.parentFile
+                }
+                if (rootDir != null) localServiceHelper.listItems(rootDir).filter { it.isFolder } else emptyList()
+            }
+
+            val currentItemsRaw: List<NoteItem> = if (isDriveMode) {
+                if (currentDriveId == null) emptyList() else driveServiceHelper?.listFiles(currentDriveId!!)?.map { NoteItem(it.name, it.mimeType.contains("folder"), it.id) } ?: emptyList()
+            } else {
+                if (currentLocalDir == null) emptyList() else localServiceHelper.listItems(currentLocalDir!!)
+            }
+
+            withContext(Dispatchers.Main) {
+                // --- KLASÖR LİSTESİNİ HAZIRLA ---
+                val tempFolderList = mutableListOf<NoteItem>()
+
+                // 1. MAIN
+                tempFolderList.add(NoteItem("Main", true, "ROOT", color = Color.BLACK, isActive = isRoot))
+
+                // 2. PRIVATE FOLDER
+                val privateDir = java.io.File(getFilesDir(), "Private Notes")
+                val isPrivateActive = currentLocalDir?.absolutePath == privateDir.absolutePath
+
+                tempFolderList.add(NoteItem(
+                    name = "Private",
+                    isFolder = true,
+                    id = "PRIVATE_ROOT",
+                    color = Color.BLACK,
+                    isActive = isPrivateActive,
+                    isLocked = true
+                ))
+
+                // 3. DİĞER KLASÖRLER
+                val processedFolders = allFoldersRaw.map { folder ->
+                    val currentPath = if (isDriveMode) currentDriveId else currentLocalDir?.absolutePath
+                    val isThisFolderActive = !isRoot && folder.id == currentPath
+                    val isLocked = securityStorage.isLocked(folder.id)
+                    folder.copy(
+                        name = folder.name.replace("!!", ""),
+                        color = if (folder.name.contains("Voice Note")) Color.parseColor("#FF4B4B") else (colorStorage.getColor(folder.id) ?: Color.parseColor("#616161")),
+                        isActive = isThisFolderActive,
+                        isLocked = isLocked
+                    )
+                }
+
+                val otherFolders = processedFolders.filter {
+                    !it.name.contains("Voice Note") && it.name != "Private Notes"
+                }.sortedBy { it.name }
+
+                val voiceNotesItem = processedFolders.find { it.name.contains("Voice Note") }
+                voiceNotesItem?.let { tempFolderList.add(it) }
+
+                tempFolderList.addAll(otherFolders)
+
+                val notesWithColors = currentItemsRaw.filter { !it.isFolder }.map { note ->
+                    note.copy(name = note.name.replace("!!", ""), color = colorStorage.getColor(note.id))
+                }
+
+                currentFolders = tempFolderList
+                currentNotes = notesWithColors.toMutableList()
+
+                notesAdapter.submitList(currentNotes)
+            }
+        }
+    }
     private fun showSettingsMenu(anchorView: View) {
-        // 1. Layout'u Yükle
         val inflater = LayoutInflater.from(this)
         val popupView = inflater.inflate(R.layout.popup_settings_menu, null)
-
-        // 2. Pencereyi Oluştur
-        val popupWindow = PopupWindow(
-            popupView,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            true
-        )
+        val popupWindow = PopupWindow(popupView, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true)
         popupWindow.elevation = 10f
-
-        // 3. Elemanları Bul (TextView olduklarından emin oluyoruz)
         val btnSystem = popupView.findViewById<TextView>(R.id.menuThemeSystem)
         val btnLight = popupView.findViewById<TextView>(R.id.menuThemeLight)
         val btnDark = popupView.findViewById<TextView>(R.id.menuThemeDark)
+        val btnSettings = popupView.findViewById<TextView>(R.id.menuSettings)
         val btnAbout = popupView.findViewById<TextView>(R.id.menuAbout)
-
-        // 4. Tıklama Olayları
-        btnSystem.setOnClickListener {
-            updateTheme(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
-            popupWindow.dismiss()
-        }
-
-        btnLight.setOnClickListener {
-            updateTheme(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO)
-            popupWindow.dismiss()
-        }
-
-        btnDark.setOnClickListener {
-            updateTheme(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES)
-            popupWindow.dismiss()
-        }
-
-        btnAbout.setOnClickListener {
-            popupWindow.dismiss()
-            startActivity(Intent(this, AboutActivity::class.java))
-        }
-
-        // 5. Menüyü Göster
+        btnSystem.setOnClickListener { popupWindow.dismiss(); updateTheme(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM) }
+        btnLight.setOnClickListener { popupWindow.dismiss(); updateTheme(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO) }
+        btnDark.setOnClickListener { popupWindow.dismiss(); updateTheme(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES) }
+        btnSettings.setOnClickListener { popupWindow.dismiss(); startActivity(Intent(this, SettingsActivity::class.java)) }
+        btnAbout.setOnClickListener { popupWindow.dismiss(); startActivity(Intent(this, AboutActivity::class.java)) }
         popupWindow.showAsDropDown(anchorView, 0, 0)
     }
-    private fun updateTheme(mode: Int) {
-        // 1. Ayarı Kaydet
-        getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-            .edit().putInt("theme_mode", mode).apply()
 
-        // 2. Temayı Uygula (Bu işlem Activity'i yeniden başlatır)
+    private fun updateTheme(mode: Int) {
+        getSharedPreferences("app_settings", Context.MODE_PRIVATE).edit().putInt("theme_mode", mode).apply()
         androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(mode)
+    }
+
+    // --- İZİN YÖNETİMİ ---
+
+    private fun checkPermissions(): Boolean {
+        // 1. Ses Kayıt İzni Var mı?
+        val recordAudio = androidx.core.content.ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.RECORD_AUDIO
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        // 2. Depolama İzni Var mı?
+        // Android 11 (R) ve üzeri için "Tüm Dosyalara Erişim" kontrolü
+        val storage = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            // Android 10 ve altı için standart yazma izni
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+
+        return recordAudio && storage
+    }
+
+    private fun requestPermissions() {
+        // Ses Kaydı İzni İste
+        val permissions = mutableListOf(android.Manifest.permission.RECORD_AUDIO)
+
+        // Android 10 ve altı için Depolama iznini listeye ekle
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) {
+            permissions.add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            permissions.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+
+        // İzin Penceresini Aç
+        androidx.core.app.ActivityCompat.requestPermissions(
+            this, permissions.toTypedArray(), 101
+        )
+
+        // Android 11 ve üzeri için Özel Depolama İzni Ekranına Yönlendir
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                    intent.addCategory("android.intent.category.DEFAULT")
+                    intent.data = Uri.parse(String.format("package:%s", applicationContext.packageName))
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    val intent = Intent()
+                    intent.action = Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION
+                    startActivity(intent)
+                }
+                Toast.makeText(this, "Please allow 'All files access' to save notes.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    // Kullanıcı izin verirse ne olacağını yönet (Opsiyonel ama iyi olur)
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 101) {
+            if (grantResults.isNotEmpty() && grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
+                // İzinler verildi, kullanıcı tekrar basarsa çalışacak
+                Toast.makeText(this, "Permissions granted. Tap again to record.", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Permissions are required to record audio.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+
+    // --- MASTER PIN YÖNETİMİ ---
+
+    // --- MASTER PIN YÖNETİMİ (YENİ) ---
+
+
+    // Özel klasöre giriş yapan yardımcı fonksiyon
+// Özel klasöre giren yardımcı fonksiyon
+    private fun openPrivateFolder() {
+        val privateDir = java.io.File(getFilesDir(), "Private Notes")
+        if (!privateDir.exists()) privateDir.mkdirs()
+        currentLocalDir = privateDir
+        loadContent()
+    }
+
+    // Şifre sorma diyaloğu (Basitleştirilmiş)
+    // onSuccess: Şifre doğru girilince çalışacak kod bloğu
+    private fun showUnlockDialog(onSuccess: () -> Unit) {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_pin_entry, null)
+        val etPin = dialogView.findViewById<EditText>(R.id.etPin)
+        val btnConfirm = dialogView.findViewById<TextView>(R.id.btnConfirm)
+        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
+        val tvTitle = dialogView.findViewById<TextView>(R.id.tvTitle)
+
+        tvTitle?.text = "Private Notes Locked"
+        etPin.hint = "Enter PIN"
+
+        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        btnConfirm.setOnClickListener {
+            val entered = etPin.text.toString()
+            if (entered == getMasterPin()) {
+                dialog.dismiss()
+                onSuccess() // Şifre doğru, işlemi yap
+            } else {
+                Toast.makeText(this, "Wrong PIN", Toast.LENGTH_SHORT).show()
+            }
+        }
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        dialog.show()
+    }
+
+
+    private fun getMasterPin(): String? {
+        val prefs = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+        return prefs.getString("master_pin", null)
+    }
+
+    private fun saveMasterPin(pin: String) {
+        val prefs = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("master_pin", pin).apply()
+    }
+
+    private fun showSetMasterPinDialog(onSuccess: () -> Unit) {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_pin_entry, null)
+        val etPin = dialogView.findViewById<EditText>(R.id.etPin)
+        val btnConfirm = dialogView.findViewById<TextView>(R.id.btnConfirm)
+        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
+
+        // Başlığı kodla değiştiriyoruz ki "Enter PIN" yerine "Set PIN" olduğu anlaşılsın
+        val tvTitle = dialogView.findViewById<TextView>(R.id.tvTitle)
+        tvTitle?.text = "Set Master PIN"
+        etPin.hint = "Create a 4-digit PIN"
+
+        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        btnConfirm.setOnClickListener {
+            val pin = etPin.text.toString()
+            if (pin.length >= 4) {
+                saveMasterPin(pin)
+                Toast.makeText(this, "Master PIN Set!", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+                onSuccess()
+            } else {
+                Toast.makeText(this, "PIN must be at least 4 digits", Toast.LENGTH_SHORT).show()
+            }
+        }
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        dialog.show()
     }
 }

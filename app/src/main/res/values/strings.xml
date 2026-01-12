@@ -12,9 +12,23 @@
         area accessible only by this app. Be careful: If you delete a Secure Folder, all notes inside it are permanently
         deleted and cannot be recovered. Also keep in mind that each secure folder is separately protected by a unique PIN.</string>
 
-    <string name="app_github_link">https://github.com/GhostyApps/HeyNotes</string>
+    <string name="app_github_link">https://github.com/GhostyApps/</string>
 
     <!-- UI Strings -->
     <string name="important_warning">⚠️ Important Privacy Info</string>
     <string name="secure_instructions">1. Tap the + button and select New Folder.\n2. Select the Black Color dot (it has a lock icon).\n3. Set your 4-digit PIN.</string>
+
+    <string name="how_to_get_key_title">How to get Gemini API Key?</string>
+    <string name="how_to_get_key_desc">
+        1. Go to &lt;a href=\"https://aistudio.google.com/app/apikey\"&gt;&lt;b&gt;Google AI Studio - API Key&lt;/b&gt;&lt;/a&gt; page.&lt;br/&gt;&lt;br/&gt;
+        2. Click the &lt;b&gt;\"Create API key\"&lt;/b&gt; button.&lt;br/&gt;&lt;br/&gt;
+        3. You will be asked to select a project. You can choose an existing one or create a new project such as \"HeyNotes\".&lt;br/&gt;&lt;br/&gt;
+        4. Give a name to your key (e.g., \"HeyNotes\"). Unique names will help you easily track usage statistics later.&lt;br/&gt;&lt;br/&gt;
+        5. Once created, copy the key from the list and paste it into the field above.&lt;br/&gt;&lt;br/&gt;
+        &lt;b&gt;Usage Limits:&lt;/b&gt;&lt;br/&gt;
+        HeyNotes is powered by the &lt;b&gt;Gemini 3.0 Flash Preview&lt;/b&gt; model. The current free quota allows for approximately &lt;b&gt;1000 audio analyses per day&lt;/b&gt;. Please note that these limits are subject to change according to Google\'s policies.&lt;br/&gt;&lt;br/&gt;
+        &lt;small&gt;&lt;i&gt;&lt;b&gt;Disclaimer:&lt;/b&gt; This application utilizes the Gemini AI API to provide transcription services but is independently developed and is not affiliated with, endorsed by, or connected to Google LLC.&lt;/i&gt;&lt;/small&gt;
+    </string>
+
+
 </resources>

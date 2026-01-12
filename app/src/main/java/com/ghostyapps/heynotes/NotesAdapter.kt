@@ -11,7 +11,7 @@ import androidx.recyclerview.widget.RecyclerView
 
 class NotesAdapter(
     private val onItemClick: (NoteItem) -> Unit,
-    private val onItemLongClick: (NoteItem) -> Unit,
+    private val onItemLongClick: (NoteItem, View) -> Unit, // 1. DEĞİŞİKLİK: View eklendi
     private val onIconClick: (NoteItem, View) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
@@ -30,8 +30,6 @@ class NotesAdapter(
 
     override fun getItemViewType(position: Int): Int {
         if (items[position].isDivider) return TYPE_DIVIDER
-
-        // This forces RecyclerView to inflate a NEW layout when mode changes
         return if (isGridMode) TYPE_GRID_ITEM else TYPE_LIST_ITEM
     }
 
@@ -60,65 +58,57 @@ class NotesAdapter(
 
     override fun getItemCount() = items.size
 
+// NotesAdapter.kt -> NoteViewHolder Sınıfı
+
     inner class NoteViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        // Views for List Mode
+        // Views
         private val tvNameList: TextView? = itemView.findViewById(R.id.tvName)
         private val ivIconList: ImageView? = itemView.findViewById(R.id.ivIcon)
-
-        // Views for Grid Mode (Card)
         private val headerLayout: View? = itemView.findViewById(R.id.headerLayout)
         private val tvContentPreview: TextView? = itemView.findViewById(R.id.tvContentPreview)
+
+        // YENİ: Tarih View'ı (Hem Grid hem List için aynı ID'yi verdik: tvDate)
+        private val tvDate: TextView? = itemView.findViewById(R.id.tvDate)
 
         fun bind(item: NoteItem) {
             val displayName = item.name.removeSuffix(".md")
 
-            // --- GRID MODE LOGIC ---
-            if (isGridMode) {
-                // If we are in Grid Mode, we expect the Grid Layout (Card)
-                // 1. Set Title (Re-using tvName ID if it matches, otherwise use header logic)
-                // Note: In item_note_grid.xml, the title ID is also tvName
-                tvNameList?.text = displayName
+            // --- ORTAK TARİH MANTIĞI ---
+            // Klasörlerde tarih gösterme, notlarda göster
+            if (item.isFolder) {
+                tvDate?.visibility = View.GONE
+            } else {
+                tvDate?.visibility = View.VISIBLE
+                tvDate?.text = item.date // Gerçek tarihi yaz
+            }
 
-                // 2. Set Preview Body
+            // --- GRID MODE ---
+            if (isGridMode) {
+                tvNameList?.text = displayName
                 tvContentPreview?.text = if (item.content.isNotEmpty()) item.content else "No additional text"
 
-                // 3. Set Header Color
-                val bgColor = item.color ?: Color.parseColor("#BDBDBD") // Default Gray
+                val bgColor = item.color ?: Color.parseColor("#BDBDBD")
                 headerLayout?.setBackgroundColor(bgColor)
 
-                // 4. Selection Logic (Fade effect for Grid)
-                if (item.isSelected) {
-                    itemView.alpha = 0.5f
-                } else {
-                    itemView.alpha = 1.0f
-                }
+                if (item.isSelected) itemView.alpha = 0.5f else itemView.alpha = 1.0f
 
-                // Grid click listener (entire card)
                 itemView.setOnClickListener { onItemClick(item) }
-                itemView.setOnLongClickListener { onItemLongClick(item); true }
-
-                // (Optional) If you want to change color in Grid view, you might need a dedicated button,
-                // but for now, let's assume long-press or list view handles that to keep cards clean.
+                itemView.setOnLongClickListener {
+                    onItemLongClick(item, itemView)
+                    true
+                }
             }
-            // --- LIST MODE LOGIC ---
-// --- LIST MODE LOGIC ---
+            // --- LIST MODE ---
             else {
                 tvNameList?.text = if (item.isFolder) item.name else displayName
 
-                // KART RENGİNİ AYARLAMA (CardContainer üzerinden)
-                // Bu satırları ekleyerek kartın arkaplanını yönetiyoruz
                 val cardView = itemView as? androidx.cardview.widget.CardView
 
                 if (item.isSelected) {
                     ivIconList?.setImageResource(R.drawable.ic_check_tick)
                     ivIconList?.clearColorFilter()
-                    // Seçiliyse kartı hafif gri yap
                     cardView?.setCardBackgroundColor(Color.parseColor("#E0E0E0"))
                 } else {
-                    // Seçili değilse varsayılan renk (toolbar_background / beyaz)
-                    // Rengi colors.xml'den almak en doğrusu ama şimdilik White/ToolbarBg varsayalım
-                    // Grid modunda olduğu gibi dinamik renk de verebiliriz ama liste modunda genelde beyaz kart istenir.
-                    // Varsayılan renge dön:
                     cardView?.setCardBackgroundColor(
                         itemView.context.resources.getColor(R.color.toolbar_background, itemView.context.theme)
                     )
@@ -137,10 +127,13 @@ class NotesAdapter(
                 }
 
                 itemView.setOnClickListener { onItemClick(item) }
-                itemView.setOnLongClickListener { onItemLongClick(item); true }
+                itemView.setOnLongClickListener {
+                    onItemLongClick(item, itemView)
+                    true
+                }
                 ivIconList?.setOnClickListener { onIconClick(item, ivIconList) }
-            }        }
+            }
+        }
     }
-
     inner class DividerViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView)
 }
