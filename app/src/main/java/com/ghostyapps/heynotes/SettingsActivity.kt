@@ -39,6 +39,29 @@ class SettingsActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_settings)
 
+        // --- DİNAMİK EKRAN AYARI (YENİ KOD) ---
+        val headerContainer = findViewById<android.widget.LinearLayout>(R.id.headerContainer)
+        val rootLayout = findViewById<androidx.constraintlayout.widget.ConstraintLayout>(R.id.settingsRoot)
+
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { view, insets ->
+            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+
+            // Sadece HEADER'ın üstüne padding veriyoruz (Tıpkı XML'de 68dp verdiğimiz gibi)
+            // Ama bu sefer sistem ne kadar diyorsa o kadar veriyoruz (örn: 50dp + ekstra 10dp)
+            headerContainer.setPadding(
+                headerContainer.paddingLeft,
+                bars.top + 20, // +20 biraz nefes payı bırakır, XML'deki gibi
+                headerContainer.paddingRight,
+                headerContainer.paddingBottom
+            )
+
+            // Alt bar (Navigasyon) çubuğunun altında içerik kalmasın diye root'a alt padding ver
+            view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, bars.bottom)
+
+            insets
+        }
+        // --------------------------------------
+
         findViewById<ImageView>(R.id.btnBack).setOnClickListener { finish() }
 
         tvGeminiInstructions = findViewById(R.id.tvGeminiInstructions)

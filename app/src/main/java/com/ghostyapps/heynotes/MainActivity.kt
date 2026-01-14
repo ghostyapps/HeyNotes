@@ -325,6 +325,28 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_main)
 
+        // --- DİNAMİK HESAPLAMA BAŞLIYOR ---
+
+        // 1. XML'deki ana ekranı bul
+        val rootLayout = findViewById<androidx.constraintlayout.widget.ConstraintLayout>(R.id.rootLayout)
+
+        // 2. Sisteme sor: "Kenar boşlukları (Insets) ne kadar?"
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { view, insets ->
+
+            // bars değişkeni, o anki telefonun üst ve alt çubuk ölçülerini alır
+            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+
+            // 3. İŞTE BURADA UYGULUYORUZ:
+            // view.paddingLeft   -> Sol aynen kalsın
+            // bars.top           -> Üst boşluk = Telefonun Çentik Yüksekliği (Otomatik)
+            // view.paddingRight  -> Sağ aynen kalsın
+            // bars.bottom        -> Alt boşluk = Navigasyon çubuğu yüksekliği
+            view.setPadding(view.paddingLeft, bars.top, view.paddingRight, bars.bottom)
+
+            insets
+        }
+        // ----------------------------------
+
         handleWidgetIntent(intent)
 
         // Padding Fix
@@ -524,49 +546,60 @@ class MainActivity : AppCompatActivity() {
      * Böylece eski kod (satır 104) başlık göndermese bile burası çalışır.
      */
     private fun saveAndNavigateToVoiceFolder(audioFile: File, title: String = "", content: String = "") {
-        val voiceFolder = File(getFilesDir(), "Voice Notes")
+        // 1. Hedef Klasör: Documents/HeyNotes/Voice Notes
+        val rootFolder = localServiceHelper.getRootFolder()
+        val voiceFolder = java.io.File(rootFolder, "Voice Notes")
+
         if (!voiceFolder.exists()) {
             voiceFolder.mkdirs()
         }
 
-        // 1. BAŞLIK BELİRLEME
-        // Eğer Gemini'den başlık geldiyse onu temizle, gelmediyse (boşsa) Tarih ata.
+        // 2. İsimlendirme (Gemini'dan gelen Title varsa onu kullan, yoksa Tarih)
         val timestamp = java.text.SimpleDateFormat("yyyy.MM.dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
-
         val displayTitle = if (title.isNotEmpty()) title else "Voice Note $timestamp"
-        val safeFileName = getSafeFileName(displayTitle)
 
-        // Dosya adı çakışmasını önlemek için (Aynı saniyede 2 dosya olmaz ama yine de önlem)
+        // Dosya sistemi için güvenli isim yap
+        val safeFileName = displayTitle.replace(Regex("[\\\\/:*?\"<>|#]"), "").trim()
         val finalFileName = if (safeFileName.isNotEmpty()) safeFileName else "Voice Note $timestamp"
-        val finalFile = File(voiceFolder, "$finalFileName.json")
+
+        // 3. Dosyalar (.md ve .m4a)
+        val finalNoteFile = java.io.File(voiceFolder, "$finalFileName.md") // ARTIK .md
+        val finalAudioFile = java.io.File(voiceFolder, "$finalFileName.m4a")
 
         try {
-            // 2. JSON OLUŞTURMA
-            val jsonObject = org.json.JSONObject()
-            jsonObject.put("title", displayTitle) // İçeride orijinal başlık (örn: "Konu: Önemli") kalabilir
-            jsonObject.put("content", content)
-            jsonObject.put("timestamp", System.currentTimeMillis())
-            jsonObject.put("audioPath", audioFile.absolutePath)
+            // 4. Ses Dosyasını Kopyala
+            // Geçici dosyayı kalıcı yerine, yeni ismiyle taşıyoruz
+            if (audioFile.exists()) {
+                audioFile.copyTo(finalAudioFile, overwrite = true)
+            }
 
-            // Dosyayı yaz
-            java.io.FileWriter(finalFile).use { it.write(jsonObject.toString()) }
+            // 5. İçerik Oluşturma (Markdown Formatı)
+            val noteContent = StringBuilder()
 
-            // UI Güncelleme
+            // Eğer Gemini transkripsiyon yaptıysa metni ekle
+            if (content.isNotEmpty()) {
+                noteContent.append(content)
+                noteContent.append("\n\n") // Metinden sonra boşluk bırak
+            }
+
+            // EN ÖNEMLİ KISIM: EditorActivity'nin sesi tanıması için bu etiketi ekliyoruz
+            noteContent.append("Audio Note: ${finalAudioFile.name}")
+
+            // 6. Dosyayı Yaz (.md olarak)
+            java.io.FileWriter(finalNoteFile).use { it.write(noteContent.toString()) }
+
             runOnUiThread {
-                Toast.makeText(this, "Saved: $safeFileName", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Saved to Voice Notes", Toast.LENGTH_SHORT).show()
                 loadContent() // Listeyi yenile
             }
 
         } catch (e: Exception) {
             e.printStackTrace()
             runOnUiThread {
-                Toast.makeText(this, "Error saving note", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Error saving note: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
-
-
-
 
 
     // --- NAVİGASYON YARDIMCISI ---
@@ -1357,11 +1390,11 @@ class MainActivity : AppCompatActivity() {
             // -----------------------------
 
             if (currentId != null) {
-                // Hata riskini sıfıra indirmek için klasik IF-ELSE kullanıyoruz
+                // Öncelik sırasına göre renk belirleme
                 if (currentFolderName.contains("Voice Note")) {
                     currentFolderColor = Color.parseColor("#FF4B4B")
                 } else if (isPrivate) {
-                    currentFolderColor = Color.BLACK // Gizli klasörse SİYAH
+                    currentFolderColor = Color.BLACK
                 } else {
                     currentFolderColor = colorStorage.getColor(currentId) ?: Color.parseColor("#616161")
                 }
@@ -1371,7 +1404,17 @@ class MainActivity : AppCompatActivity() {
         }
 
         tvAppTitle.text = "Hey, $userName"
-        tvGreeting.text = "${java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY).let { if(it<12) "Good morning." else if(it<17) "Good afternoon." else if(it<20) "Good evening." else "Good night." }}"
+
+        // Selamlama Mantığı (Saat dilimine göre)
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val greeting = when {
+            hour < 12 -> "Good morning."
+            hour < 17 -> "Good afternoon."
+            hour < 21 -> "Good evening."
+            else -> "Good night."
+        }
+        tvGreeting.text = greeting
+
         tvSubtitle.text = currentFolderName
         layoutFolderSelector.backgroundTintList = android.content.res.ColorStateList.valueOf(currentFolderColor)
 
@@ -1381,6 +1424,7 @@ class MainActivity : AppCompatActivity() {
                 driveServiceHelper?.listFiles(rootDriveId ?: "")?.filter { it.mimeType.contains("folder") }?.map { NoteItem(it.name, true, it.id) } ?: emptyList()
             } else {
                 var rootDir = currentLocalDir
+                // Root dizine kadar yukarı çıkma (Breadcrumb mantığı için)
                 while (rootDir?.parentFile != null && rootDir.parentFile.name != "0" && rootDir.parentFile.name != "files") {
                     if (rootDir.name == "HeyNotes") break
                     rootDir = rootDir.parentFile
@@ -1398,10 +1442,10 @@ class MainActivity : AppCompatActivity() {
                 // --- KLASÖR LİSTESİNİ HAZIRLA ---
                 val tempFolderList = mutableListOf<NoteItem>()
 
-                // 1. MAIN
+                // 1. MAIN (Sabit)
                 tempFolderList.add(NoteItem("Main", true, "ROOT", color = Color.BLACK, isActive = isRoot))
 
-                // 2. PRIVATE FOLDER
+                // 2. PRIVATE FOLDER (Sabit - getFilesDir içinde)
                 val privateDir = java.io.File(getFilesDir(), "Private Notes")
                 val isPrivateActive = currentLocalDir?.absolutePath == privateDir.absolutePath
 
@@ -1414,32 +1458,53 @@ class MainActivity : AppCompatActivity() {
                     isLocked = true
                 ))
 
-                // 3. DİĞER KLASÖRLER
+                // 3. VOICE NOTES (Sabit - Documents/HeyNotes içinde)
+                // Klasör yolunu ana kök dizinden alıyoruz
+                val rootFolder = localServiceHelper.getRootFolder()
+                val voiceDir = java.io.File(rootFolder, "Voice Notes")
+
+                // Klasör yoksa oluştur (Böylece listede her zaman görünür)
+                if (!voiceDir.exists()) {
+                    voiceDir.mkdirs()
+                }
+
+                val isVoiceActive = currentLocalDir?.absolutePath == voiceDir.absolutePath
+
+                tempFolderList.add(NoteItem(
+                    name = "Voice Notes",
+                    isFolder = true,
+                    id = voiceDir.absolutePath,
+                    color = Color.parseColor("#FF4B4B"),
+                    isActive = isVoiceActive
+                ))
+
+                // 4. DİĞER KLASÖRLER (Filtreleme)
                 val processedFolders = allFoldersRaw.map { folder ->
                     val currentPath = if (isDriveMode) currentDriveId else currentLocalDir?.absolutePath
                     val isThisFolderActive = !isRoot && folder.id == currentPath
                     val isLocked = securityStorage.isLocked(folder.id)
                     folder.copy(
                         name = folder.name.replace("!!", ""),
+                        // Renk: Voice Note ise kırmızı, diğerleri kayıtlı renk veya gri
                         color = if (folder.name.contains("Voice Note")) Color.parseColor("#FF4B4B") else (colorStorage.getColor(folder.id) ?: Color.parseColor("#616161")),
                         isActive = isThisFolderActive,
                         isLocked = isLocked
                     )
                 }
 
+                // Listeyi temizle: Private ve Voice Notes zaten yukarıda manuel eklendi, tekrar gelmesin
                 val otherFolders = processedFolders.filter {
                     !it.name.contains("Voice Note") && it.name != "Private Notes"
                 }.sortedBy { it.name }
 
-                val voiceNotesItem = processedFolders.find { it.name.contains("Voice Note") }
-                voiceNotesItem?.let { tempFolderList.add(it) }
-
                 tempFolderList.addAll(otherFolders)
 
+                // Notları Hazırla
                 val notesWithColors = currentItemsRaw.filter { !it.isFolder }.map { note ->
                     note.copy(name = note.name.replace("!!", ""), color = colorStorage.getColor(note.id))
                 }
 
+                // Listeleri Güncelle
                 currentFolders = tempFolderList
                 currentNotes = notesWithColors.toMutableList()
 
@@ -1447,6 +1512,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+
     private fun showSettingsMenu(anchorView: View) {
         val inflater = LayoutInflater.from(this)
         val popupView = inflater.inflate(R.layout.popup_settings_menu, null)

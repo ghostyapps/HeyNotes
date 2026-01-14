@@ -68,6 +68,30 @@ class VoiceRecorderDialog : AppCompatActivity() {
 
         setContentView(R.layout.dialog_voice_recorder)
 
+        // --- DİNAMİK EKRAN AYARI (VOICE RECORDER) ---
+        val rootLayout = findViewById<androidx.constraintlayout.widget.ConstraintLayout>(R.id.voiceRoot)
+        val cardHeader = findViewById<com.google.android.material.card.MaterialCardView>(R.id.cardHeader)
+
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { view, insets ->
+            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+
+            // 1. DP'yi Piksele Çevirme (20dp estetik boşluk)
+            val extraSpaceDp = 20
+            val extraSpacePx = (extraSpaceDp * resources.displayMetrics.density).toInt()
+
+            // 2. ÜST BOŞLUK (Header Margin)
+            val params = cardHeader.layoutParams as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
+            params.topMargin = bars.top + extraSpacePx
+            cardHeader.layoutParams = params
+
+            // 3. ALT BOŞLUK (Button Padding)
+            // Butonların navigasyon barının altında kalmaması için root'a padding veriyoruz.
+            view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, bars.bottom)
+
+            insets
+        }
+        // --------------------------------------------
+
         // View Bağlamaları
         tvTimer = findViewById(R.id.tvTimer)
         btnRecordAction = findViewById(R.id.btnRecordAction)

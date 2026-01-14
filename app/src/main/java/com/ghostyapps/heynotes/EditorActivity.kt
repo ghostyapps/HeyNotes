@@ -25,18 +25,22 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 
-// Markwon Core & Plugins
+import android.widget.*
+import androidx.activity.enableEdgeToEdge // Hata 1 Çözümü
+import java.io.File // Hata 4 Çözümü (exists için)
 import io.noties.markwon.Markwon
-import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
-import io.noties.markwon.ext.tasklist.TaskListPlugin
 
-import java.io.File
+// Markwon Core & Plugins
+
+
 
 // Gemini ve Coroutines Importları
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class EditorActivity : AppCompatActivity() {
+
+    private lateinit var localServiceHelper: LocalServiceHelper
 
     // UI Components
     private lateinit var etTitle: EditText
@@ -74,11 +78,12 @@ class EditorActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Edge-to-Edge
+        // YERİNE BUNU YAPIŞTIRIN (Manuel Edge-to-Edge):
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
 
+        // Window Ayarları
         val windowInsetsController = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
         val isNightMode = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
         windowInsetsController.isAppearanceLightStatusBars = !isNightMode
@@ -86,13 +91,37 @@ class EditorActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_editor)
 
-        // Keyboard Fix
-        val rootView = findViewById<View>(android.R.id.content)
-        ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, insets ->
-            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
-            view.setPadding(0, 0, 0, if (ime.bottom > 0) ime.bottom else 0)
-            WindowInsetsCompat.CONSUMED
+        // Init Helpers (ÖNEMLİ: Ses dosyasını bulmak için buna ihtiyacımız var)
+        localServiceHelper = LocalServiceHelper(this)
+        colorStorage = ColorStorage(this)
+
+        // --- DİNAMİK EKRAN VE KLAVYE AYARI (DÜZELTİLDİ VE BİRLEŞTİRİLDİ) ---
+        val rootLayout = findViewById<androidx.constraintlayout.widget.ConstraintLayout>(R.id.editorRoot)
+        val cardHeader = findViewById<com.google.android.material.card.MaterialCardView>(R.id.cardHeader)
+
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { view, insets ->
+            val systemBars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            val ime = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()) // Klavye
+
+            // DÜZELTME 1: 20 sayısını DP'den Piksele çeviriyoruz
+            val extraSpaceDp = 20
+            val extraSpacePx = (extraSpaceDp * resources.displayMetrics.density).toInt()
+
+            // ÜST BOŞLUK (CardView Margin)
+            val params = cardHeader.layoutParams as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
+            params.topMargin = systemBars.top + extraSpacePx
+            cardHeader.layoutParams = params
+
+            // ALT BOŞLUK (Navigasyon Barı veya Klavye hangisi büyükse)
+            // Eğer klavye açıksa (ime.bottom > 0), klavye yüksekliğini kullan.
+            // Değilse navigasyon barını (systemBars.bottom) kullan.
+            val bottomPadding = if (ime.bottom > 0) ime.bottom else systemBars.bottom
+
+            view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, bottomPadding)
+
+            insets
         }
+        // -------------------------------------------------------------------
 
         val tvEditorDate = findViewById<TextView>(R.id.tvEditorDate)
 
@@ -107,7 +136,6 @@ class EditorActivity : AppCompatActivity() {
         }
 
         // Init Components
-        colorStorage = ColorStorage(this)
         etTitle = findViewById(R.id.etTitle)
         etContent = findViewById(R.id.etContent)
 
@@ -138,10 +166,10 @@ class EditorActivity : AppCompatActivity() {
 
         val btnTranscribe = findViewById<View>(R.id.btnTranscribe)
 
-        // --- MARKWON BUILDER (Standart) ---
-        markwon = Markwon.builder(this)
-            .usePlugin(StrikethroughPlugin.create())
-            .usePlugin(TaskListPlugin.create(this))
+        // --- MARKWON BUILDER ---
+        markwon = io.noties.markwon.Markwon.builder(this)
+            .usePlugin(io.noties.markwon.ext.strikethrough.StrikethroughPlugin.create())
+            .usePlugin(io.noties.markwon.ext.tasklist.TaskListPlugin.create(this))
             .build()
 
         // Load Data
@@ -158,19 +186,29 @@ class EditorActivity : AppCompatActivity() {
             }
         }
 
-        // Audio Note Search
+        // DÜZELTME 2: Ses Dosyası Arama Mantığı (Documents Klasörüne Göre)
         var audioFileToPlay: File? = null
         if (incomingContent != null && incomingContent.contains("Audio Note:")) {
             try {
                 val audioName = incomingContent.substringAfter("Audio Note: ").substringBefore("\n").trim()
-                val candidate = File(filesDir, "voice_notes/$audioName")
+
+                // ESKİSİ: val candidate = File(filesDir, "voice_notes/$audioName")
+                // YENİSİ: Documents/HeyNotes/Voice Notes klasörüne bakıyoruz
+                val rootFolder = localServiceHelper.getRootFolder()
+                val voiceFolder = java.io.File(rootFolder, "Voice Notes")
+                val candidate = java.io.File(voiceFolder, audioName)
+
                 if (candidate.exists()) audioFileToPlay = candidate
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
 
+        // Yedek Kontrol: Eğer içerikte yazmıyorsa ama aynı isimde .m4a varsa (Eski notlar için)
         if (audioFileToPlay == null && originalNoteId != null) {
-            val noteFile = File(originalNoteId!!)
-            val candidate = File(noteFile.parentFile, "${noteFile.nameWithoutExtension}.m4a")
+            val noteFile = java.io.File(originalNoteId!!)
+            // Not dosyası ile aynı klasörde, aynı isimde m4a var mı?
+            val candidate = java.io.File(noteFile.parentFile, "${noteFile.nameWithoutExtension}.m4a")
             if (candidate.exists()) audioFileToPlay = candidate
         }
 
@@ -207,13 +245,12 @@ class EditorActivity : AppCompatActivity() {
         cardContent.setOnClickListener { switchToEditorMode() }
         ivNoteColor.setOnClickListener { showColorPopup(ivNoteColor) }
 
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 saveAndExit()
             }
         })
     }
-
     private fun performManualTranscribe(audioFile: File) {
         val prefs = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
         val apiKey = prefs.getString("gemini_api_key", null)

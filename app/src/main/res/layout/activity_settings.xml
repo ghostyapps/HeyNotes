@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout
+    android:id="@+id/settingsRoot"
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -14,7 +15,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingTop="68dp"
+        android:paddingTop="0dp"
         android:paddingBottom="24dp"
         android:paddingHorizontal="24dp"
         app:layout_constraintTop_toTopOf="parent">
@@ -125,7 +126,8 @@
                         android:text="Change PIN"
                         android:paddingTop="36dp"
                         android:background="?attr/selectableItemBackground"
-                        android:drawableEnd="@drawable/ic_lock_icon" />
+                        android:drawableEnd="@drawable/ic_lock_icon"
+                        app:drawableTint="@color/text_color"/>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

@@ -13,7 +13,7 @@ android {
         minSdk = 26 // 34 is very high for minSdk, 26 (Android 8) covers 90%+ devices
         targetSdk = 35
         versionCode = 1
-        versionName = "0.2.0"
+        versionName = "0.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

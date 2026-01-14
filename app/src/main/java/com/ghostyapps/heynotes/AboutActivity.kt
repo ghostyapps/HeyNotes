@@ -28,6 +28,30 @@ class AboutActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_about)
 
+        // --- DİNAMİK EKRAN AYARI (GÜNCELLENDİ) ---
+        val headerContainer = findViewById<android.widget.LinearLayout>(R.id.headerContainer)
+
+        // DİKKAT: Artık ConstraintLayout olduğu için türünü güncelledik
+        val rootLayout = findViewById<androidx.constraintlayout.widget.ConstraintLayout>(R.id.aboutRoot)
+
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { view, insets ->
+            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+
+            // Sadece HEADER'ın üstüne dinamik boşluk ver
+            headerContainer.setPadding(
+                headerContainer.paddingLeft,
+                bars.top + 20,
+                headerContainer.paddingRight,
+                headerContainer.paddingBottom
+            )
+
+            // Navigasyon barı için alta boşluk
+            view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, bars.bottom)
+
+            insets
+        }
+        // ------------------------------------------
+
         // --- BACK BUTTON İŞLEVİ (EKLENDİ) ---
         // XML'deki id'si btnBack olan ImageView'ı bulup tıklanınca finish() çağırıyoruz.
         findViewById<ImageView>(R.id.btnBack).setOnClickListener {

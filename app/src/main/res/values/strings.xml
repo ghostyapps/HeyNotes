@@ -10,13 +10,14 @@
     <!-- FIXED: Added backslash to phone\'s -->
     <string name="app_privacy_info">Secure Folders are hidden from your phone\'s File Manager and exist in a protected storage
         area accessible only by this app. Be careful: If you delete a Secure Folder, all notes inside it are permanently
-        deleted and cannot be recovered. Also keep in mind that each secure folder is separately protected by a unique PIN.</string>
+        deleted and cannot be recovered. </string>
 
     <string name="app_github_link">https://github.com/GhostyApps/</string>
 
     <!-- UI Strings -->
-    <string name="important_warning">⚠️ Important Privacy Info</string>
-    <string name="secure_instructions">1. Tap the + button and select New Folder.\n2. Select the Black Color dot (it has a lock icon).\n3. Set your 4-digit PIN.</string>
+    <string name="important_warning">⚠️ Important: No PIN Recovery</string>
+    <string name="secure_instructions">1. Find the "Private" folder in your list.\n2. Tap it to set up your 4 or 6-digit PIN.\n3. Notes created here are encrypted locally.</string>
+
 
     <string name="how_to_get_key_title">How to get Gemini API Key?</string>
     <string name="how_to_get_key_desc">
