@@ -16,9 +16,6 @@ HeyNotes goes beyond simple recording. It utilizes Google's latest **Gemini 3 Fl
 ### 📂 Smart Organization
 Organizing your notes has never been this fluid.
 - **Dynamic Folders (Pills):** Switch between categories instantly with a modern, color-coded "pill" interface.
-- **Drag & Drop:** Move notes between folders easily using intuitive menus.
-- **Favorites:** Keep your most important notes just a tap away.
-- **View Options:** Choose between a detailed **List View** or a visual **Grid View**.
 
 ### 🎨 Unique & Modern Design
 - **Hole Punch Aesthetic:** A visual style featuring a "hole punch" effect inspired by the beautiful radio made by Braun, giving your voice recorder a premium feel.
