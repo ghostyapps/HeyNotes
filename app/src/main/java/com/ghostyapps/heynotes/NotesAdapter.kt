@@ -5,20 +5,19 @@ import android.graphics.PorterDuff
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.card.MaterialCardView
 
 class NotesAdapter(
     private val onItemClick: (NoteItem) -> Unit,
-    private val onItemLongClick: (NoteItem, View) -> Unit, // 1. DEĞİŞİKLİK: View eklendi
+    private val onItemLongClick: (NoteItem, View) -> Unit,
     private val onIconClick: (NoteItem, View) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private var items: List<NoteItem> = emptyList()
     var isGridMode = false
 
-    // Define unique IDs for each view type
     private val TYPE_LIST_ITEM = 0
     private val TYPE_GRID_ITEM = 1
     private val TYPE_DIVIDER = 2
@@ -58,82 +57,94 @@ class NotesAdapter(
 
     override fun getItemCount() = items.size
 
-// NotesAdapter.kt -> NoteViewHolder Sınıfı
-
     inner class NoteViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        // Views
-        private val tvNameList: TextView? = itemView.findViewById(R.id.tvName)
-        private val ivIconList: ImageView? = itemView.findViewById(R.id.ivIcon)
-        private val headerLayout: View? = itemView.findViewById(R.id.headerLayout)
-        private val tvContentPreview: TextView? = itemView.findViewById(R.id.tvContentPreview)
 
-        // YENİ: Tarih View'ı (Hem Grid hem List için aynı ID'yi verdik: tvDate)
-        private val tvDate: TextView? = itemView.findViewById(R.id.tvDate)
+        private val tvTitle: TextView = itemView.findViewById(R.id.note_title)
+        private val tvContent: TextView = itemView.findViewById(R.id.note_content)
+        private val tvDate: TextView = itemView.findViewById(R.id.note_date)
+        private val cardView: MaterialCardView = itemView.findViewById(R.id.note_card_view)
 
         fun bind(item: NoteItem) {
             val displayName = item.name.removeSuffix(".md")
 
-            // --- ORTAK TARİH MANTIĞI ---
-            // Klasörlerde tarih gösterme, notlarda göster
+            // --- 1. BAŞLIK VE GÖRÜNÜRLÜK (Ortak) ---
+            // Arama sonucu da olsa, normal de olsa başlık görünmeli
+            tvTitle.text = if (item.isFolder) item.name else displayName
+            tvTitle.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0)
+
             if (item.isFolder) {
-                tvDate?.visibility = View.GONE
+                tvContent.visibility = View.GONE
+                tvDate.visibility = View.GONE
             } else {
-                tvDate?.visibility = View.VISIBLE
-                tvDate?.text = item.date // Gerçek tarihi yaz
-            }
+                tvContent.visibility = View.VISIBLE
+                tvDate.visibility = View.VISIBLE
+                tvDate.text = item.date
 
-            // --- GRID MODE ---
-            if (isGridMode) {
-                tvNameList?.text = displayName
-                tvContentPreview?.text = if (item.content.isNotEmpty()) item.content else "No additional text"
-
-                val bgColor = item.color ?: Color.parseColor("#BDBDBD")
-                headerLayout?.setBackgroundColor(bgColor)
-
-                if (item.isSelected) itemView.alpha = 0.5f else itemView.alpha = 1.0f
-
-                itemView.setOnClickListener { onItemClick(item) }
-                itemView.setOnLongClickListener {
-                    onItemLongClick(item, itemView)
-                    true
-                }
-            }
-            // --- LIST MODE ---
-            else {
-                tvNameList?.text = if (item.isFolder) item.name else displayName
-
-                val cardView = itemView as? androidx.cardview.widget.CardView
-
-                if (item.isSelected) {
-                    ivIconList?.setImageResource(R.drawable.ic_check_tick)
-                    ivIconList?.clearColorFilter()
-                    cardView?.setCardBackgroundColor(Color.parseColor("#E0E0E0"))
+                // --- İÇERİK KARARI (Farklılaşan Kısım Burası) ---
+                if (item.searchPreview != null) {
+                    // Arama sonucuysa: Search Preview göster
+                    tvContent.text = item.searchPreview
                 } else {
-                    cardView?.setCardBackgroundColor(
-                        itemView.context.resources.getColor(R.color.toolbar_background, itemView.context.theme)
-                    )
-
-                    if (item.isFolder) {
-                        ivIconList?.setImageResource(R.drawable.icon_folder_dot)
-                    } else {
-                        ivIconList?.setImageResource(R.drawable.icon_note_dot)
-                    }
-
-                    if (item.color != null) {
-                        ivIconList?.setColorFilter(item.color!!, PorterDuff.Mode.SRC_IN)
-                    } else {
-                        ivIconList?.clearColorFilter()
-                    }
+                    // Normal notsa: Normal içeriği temizle göster
+                    tvContent.text = getCleanContent(item.content)
                 }
+            }
 
-                itemView.setOnClickListener { onItemClick(item) }
-                itemView.setOnLongClickListener {
-                    onItemLongClick(item, itemView)
-                    true
+            // --- 2. RENK AYARLARI (Ortak) ---
+            // Arama sonuçları da renkli olmalı, o yüzden bu kodu if/else dışına aldık.
+            val colorCode = item.color ?: Color.WHITE
+            cardView.setCardBackgroundColor(colorCode)
+
+            // --- 3. SEÇİLİ OLMA DURUMU (Ortak) ---
+            if (item.isSelected) {
+                cardView.strokeWidth = 6
+                cardView.strokeColor = Color.parseColor("#4285F4")
+                itemView.alpha = 0.8f
+            } else {
+                if (colorCode == Color.WHITE) {
+                    cardView.strokeWidth = 2
+                    cardView.strokeColor = Color.parseColor("#1F000000")
+                } else {
+                    cardView.strokeWidth = 0
                 }
-                ivIconList?.setOnClickListener { onIconClick(item, ivIconList) }
+                itemView.alpha = 1.0f
+            }
+
+            // --- 4. TIKLAMA (Ortak) ---
+            // Arama sonuçlarına da tıklanabilmeli
+            itemView.setOnClickListener { onItemClick(item) }
+            itemView.setOnLongClickListener {
+                onItemLongClick(item, itemView)
+                true
             }
         }
+
     }
+
+    // Markdown sembollerini temizleyen yardımcı fonksiyon
+    private fun getCleanContent(markdown: String): String {
+        if (markdown.isEmpty()) return "No additional text"
+
+        var text = markdown
+
+        // 1. Kalın (**text**) işaretlerini kaldır -> text
+        text = text.replace("**", "")
+
+        // 2. İtalik (*text* veya _text_) işaretlerini kaldır
+        text = text.replace("*", "").replace("_", "")
+
+        // 3. Başlık işaretlerini (#) kaldır
+        text = text.replace("#", "")
+
+        // 4. Linkleri temizle [Link](url) -> Link (Basit versiyon)
+        text = text.replace(Regex("\\[(.*?)\\]\\(.*?\\)"), "$1")
+
+        // 5. Kod bloklarını (`) temizle
+        text = text.replace("`", "")
+
+        // 6. Fazla boşlukları temizle
+        return text.trim()
+    }
+
     inner class DividerViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView)
 }

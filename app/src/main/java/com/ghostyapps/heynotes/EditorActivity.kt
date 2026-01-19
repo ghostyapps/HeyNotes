@@ -11,32 +11,15 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
-import android.widget.EditText
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.PopupWindow
-import android.widget.ScrollView
-import android.widget.SeekBar
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
-
-import android.widget.*
-import androidx.activity.enableEdgeToEdge // Hata 1 Çözümü
-import java.io.File // Hata 4 Çözümü (exists için)
+import com.airbnb.lottie.LottieAnimationView
+import com.google.android.material.card.MaterialCardView
 import io.noties.markwon.Markwon
-
-// Markwon Core & Plugins
-
-
-
-// Gemini ve Coroutines Importları
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.File
 
 class EditorActivity : AppCompatActivity() {
 
@@ -47,11 +30,15 @@ class EditorActivity : AppCompatActivity() {
     private lateinit var etContent: EditText
     private lateinit var tvReader: TextView
     private lateinit var svReader: ScrollView
+    private lateinit var tvEditorDate: TextView // Yeni eklendi (Header rengi için lazım)
 
     private lateinit var bottomBar: View
     private lateinit var cardContent: View
+    private lateinit var cardHeader: MaterialCardView // Yeni eklendi (Header rengi için lazım)
 
     private lateinit var ivNoteColor: ImageView
+
+    private lateinit var ivShare: ImageView
 
     // Player Components
     private lateinit var playerContainer: LinearLayout
@@ -67,18 +54,18 @@ class EditorActivity : AppCompatActivity() {
     // State
     private var isEditMode = true
     private var originalNoteId: String? = null
-    private var selectedColorHex: String? = null
+    private var selectedColorHex: String? = null // Renk değişkenimiz bu
 
     private lateinit var fabOverlay: View
     private lateinit var geminiLoadingContainer: LinearLayout
-    private lateinit var lottieGemini: com.airbnb.lottie.LottieAnimationView
+    private lateinit var lottieGemini: LottieAnimationView
     private lateinit var tvGeminiStatus: TextView
     private lateinit var tvGeminiAction: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // YERİNE BUNU YAPIŞTIRIN (Manuel Edge-to-Edge):
+        // Edge-to-Edge
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
@@ -91,39 +78,46 @@ class EditorActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_editor)
 
-        // Init Helpers (ÖNEMLİ: Ses dosyasını bulmak için buna ihtiyacımız var)
+        // Init Helpers
         localServiceHelper = LocalServiceHelper(this)
         colorStorage = ColorStorage(this)
 
-        // --- DİNAMİK EKRAN VE KLAVYE AYARI (DÜZELTİLDİ VE BİRLEŞTİRİLDİ) ---
+        // --- Init Components ---
+        cardHeader = findViewById(R.id.cardHeader) // Header Kartı
+        etTitle = findViewById(R.id.etTitle)
+        etContent = findViewById(R.id.etContent)
+        tvEditorDate = findViewById(R.id.tvEditorDate)
+
+        cardContent = findViewById(R.id.cardContent)
+        tvReader = findViewById(R.id.tvReader)
+        svReader = findViewById(R.id.scrollViewReader)
+        bottomBar = findViewById(R.id.cardBottomToolbar)
+        ivNoteColor = findViewById(R.id.ivNoteColor)
+        ivShare = findViewById(R.id.ivShare)
+
+        ivShare.setOnClickListener {
+            shareNoteText()
+        }
+
+        // --- DİNAMİK EKRAN VE KLAVYE AYARI ---
         val rootLayout = findViewById<androidx.constraintlayout.widget.ConstraintLayout>(R.id.editorRoot)
-        val cardHeader = findViewById<com.google.android.material.card.MaterialCardView>(R.id.cardHeader)
 
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { view, insets ->
             val systemBars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-            val ime = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()) // Klavye
+            val ime = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime())
 
-            // DÜZELTME 1: 20 sayısını DP'den Piksele çeviriyoruz
             val extraSpaceDp = 20
             val extraSpacePx = (extraSpaceDp * resources.displayMetrics.density).toInt()
 
-            // ÜST BOŞLUK (CardView Margin)
             val params = cardHeader.layoutParams as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
             params.topMargin = systemBars.top + extraSpacePx
             cardHeader.layoutParams = params
 
-            // ALT BOŞLUK (Navigasyon Barı veya Klavye hangisi büyükse)
-            // Eğer klavye açıksa (ime.bottom > 0), klavye yüksekliğini kullan.
-            // Değilse navigasyon barını (systemBars.bottom) kullan.
             val bottomPadding = if (ime.bottom > 0) ime.bottom else systemBars.bottom
-
             view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, bottomPadding)
 
             insets
         }
-        // -------------------------------------------------------------------
-
-        val tvEditorDate = findViewById<TextView>(R.id.tvEditorDate)
 
         // Tarih Formatı
         val timestamp = intent.getLongExtra("NOTE_TIMESTAMP", 0L)
@@ -135,22 +129,11 @@ class EditorActivity : AppCompatActivity() {
             tvEditorDate.text = fullFormat.format(java.util.Date())
         }
 
-        // Init Components
-        etTitle = findViewById(R.id.etTitle)
-        etContent = findViewById(R.id.etContent)
-
         // Klavye Ayarı
         etContent.inputType = android.text.InputType.TYPE_CLASS_TEXT or
                 android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
                 android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
                 android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-
-        cardContent = findViewById(R.id.cardContent)
-
-        tvReader = findViewById(R.id.tvReader)
-        svReader = findViewById(R.id.scrollViewReader)
-        bottomBar = findViewById(R.id.cardBottomToolbar)
-        ivNoteColor = findViewById(R.id.ivNoteColor)
 
         // Player Views Init
         playerContainer = findViewById(R.id.playerContainer)
@@ -176,38 +159,43 @@ class EditorActivity : AppCompatActivity() {
         originalNoteId = intent.getStringExtra("NOTE_ID")
         val incomingTitle = intent.getStringExtra("NOTE_TITLE")
         val incomingContent = intent.getStringExtra("NOTE_CONTENT")
+        val colorHex = intent.getStringExtra("NOTE_COLOR") // MainActivity'den gelen renk
 
-        // Load Color
-        if (originalNoteId != null) {
+        // --- RENK YÖNETİMİ ---
+        if (colorHex != null) {
+            selectedColorHex = colorHex
+            applyColorToHeader(colorHex)
+        } else if (originalNoteId != null) {
+            // Var olan not ama Intent'te renk yoksa storage'dan çek
             val savedColor = colorStorage.getColor(originalNoteId!!)
             if (savedColor != null) {
-                ivNoteColor.setColorFilter(savedColor)
-                selectedColorHex = String.format("#%06X", (0xFFFFFF and savedColor))
+                val hex = String.format("#%06X", (0xFFFFFF and savedColor))
+                selectedColorHex = hex
+                applyColorToHeader(hex)
+            } else {
+                applyColorToHeader("#FFFFFF")
             }
+        } else {
+            // Yeni not
+            val randomColor = ColorStorage.colors.random()
+            selectedColorHex = randomColor
+            applyColorToHeader(randomColor)
         }
 
-        // DÜZELTME 2: Ses Dosyası Arama Mantığı (Documents Klasörüne Göre)
+        // Ses Dosyası Arama
         var audioFileToPlay: File? = null
         if (incomingContent != null && incomingContent.contains("Audio Note:")) {
             try {
                 val audioName = incomingContent.substringAfter("Audio Note: ").substringBefore("\n").trim()
-
-                // ESKİSİ: val candidate = File(filesDir, "voice_notes/$audioName")
-                // YENİSİ: Documents/HeyNotes/Voice Notes klasörüne bakıyoruz
                 val rootFolder = localServiceHelper.getRootFolder()
                 val voiceFolder = java.io.File(rootFolder, "Voice Notes")
                 val candidate = java.io.File(voiceFolder, audioName)
-
                 if (candidate.exists()) audioFileToPlay = candidate
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            } catch (e: Exception) { e.printStackTrace() }
         }
 
-        // Yedek Kontrol: Eğer içerikte yazmıyorsa ama aynı isimde .m4a varsa (Eski notlar için)
         if (audioFileToPlay == null && originalNoteId != null) {
             val noteFile = java.io.File(originalNoteId!!)
-            // Not dosyası ile aynı klasörde, aynı isimde m4a var mı?
             val candidate = java.io.File(noteFile.parentFile, "${noteFile.nameWithoutExtension}.m4a")
             if (candidate.exists()) audioFileToPlay = candidate
         }
@@ -215,11 +203,9 @@ class EditorActivity : AppCompatActivity() {
         if (audioFileToPlay != null) {
             playerContainer.visibility = View.VISIBLE
             setupAudioPlayer(audioFileToPlay!!)
-            if (btnTranscribe != null) {
-                btnTranscribe.visibility = View.VISIBLE
-                btnTranscribe.setOnClickListener {
-                    showTranscribeConfirmationDialog(audioFileToPlay!!)
-                }
+            btnTranscribe?.visibility = View.VISIBLE
+            btnTranscribe?.setOnClickListener {
+                showTranscribeConfirmationDialog(audioFileToPlay!!)
             }
         } else {
             playerContainer.visibility = View.GONE
@@ -238,7 +224,6 @@ class EditorActivity : AppCompatActivity() {
         setupButtons()
         setupSmartKeyboard()
 
-        // --- TIKLAMA İLE DÜZENLEME MODU ---
         tvReader.setOnClickListener { switchToEditorMode() }
         svReader.isFillViewport = true
         svReader.setOnClickListener { switchToEditorMode() }
@@ -251,6 +236,85 @@ class EditorActivity : AppCompatActivity() {
             }
         })
     }
+
+    // --- RENK UYGULAMA FONKSİYONU ---
+    private fun applyColorToHeader(hexColor: String) {
+        try {
+            val colorInt = Color.parseColor(hexColor)
+
+            // 1. Header Kartını (Arkayı) Boya
+            cardHeader.setCardBackgroundColor(colorInt)
+
+            // 2. İKON RENGİ (Zıtlık Ayarı)
+            // Eğer kart rengi koyuysa ikon BEYAZ, açıksa SİYAH olsun.
+            val isDark = androidx.core.graphics.ColorUtils.calculateLuminance(colorInt) < 0.5
+
+            val contentColor = if (isDark) Color.WHITE else Color.BLACK
+            val hintColor = if (isDark) Color.LTGRAY else Color.GRAY
+
+            // Sadece senin ikonunu (src) boyuyoruz.
+            // Arka plana dokunmuyoruz çünkü XML'de background'u kaldırdık.
+            ivNoteColor.setColorFilter(contentColor)
+            // 2. PAYLAŞ İKONUNU DA BOYA (YENİ)
+            ivShare.setColorFilter(contentColor)
+
+            // Başlık ve Tarih renkleri
+            etTitle.setTextColor(contentColor)
+            etTitle.setHintTextColor(hintColor)
+            tvEditorDate.setTextColor(contentColor)
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+    private fun showColorPopup(anchorView: View) {
+        val inflater = LayoutInflater.from(this)
+        val popupView = inflater.inflate(R.layout.popup_color_picker, null)
+        val container = popupView.findViewById<LinearLayout>(R.id.colorContainer)
+
+        val colors = ColorStorage.colors
+
+        val popupWindow = PopupWindow(popupView, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true)
+        popupWindow.elevation = 10f
+        popupWindow.isOutsideTouchable = true
+
+        for (colorHex in colors) {
+            val dot = View(this)
+            val size = (32 * resources.displayMetrics.density).toInt()
+            val margin = (6 * resources.displayMetrics.density).toInt()
+            val params = LinearLayout.LayoutParams(size, size).apply { setMargins(margin, 0, margin, 0) }
+            dot.layoutParams = params
+
+            val bg = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.shape_circle)?.mutate() as? android.graphics.drawable.GradientDrawable
+
+            try {
+                val colorInt = Color.parseColor(colorHex)
+                bg?.setColor(colorInt)
+
+                if (colorHex.equals("#FFFFFF", ignoreCase = true)) {
+                    val strokeColor = Color.parseColor("#E0E0E0")
+                    val strokeWidth = (1 * resources.displayMetrics.density).toInt()
+                    bg?.setStroke(strokeWidth, strokeColor)
+                } else {
+                    bg?.setStroke(0, 0)
+                }
+            } catch (e: Exception) {
+                bg?.setColor(Color.LTGRAY)
+            }
+
+            dot.background = bg
+
+            dot.setOnClickListener {
+                selectedColorHex = colorHex
+                applyColorToHeader(colorHex) // Rengi anında uygula
+                popupWindow.dismiss()
+            }
+            container.addView(dot)
+        }
+
+        popupWindow.showAsDropDown(anchorView, 0, -20)
+    }
+
     private fun performManualTranscribe(audioFile: File) {
         val prefs = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
         val apiKey = prefs.getString("gemini_api_key", null)
@@ -421,33 +485,6 @@ class EditorActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun showColorPopup(anchorView: View) {
-        val inflater = LayoutInflater.from(this)
-        val popupView = inflater.inflate(R.layout.popup_color_picker, null)
-        val container = popupView.findViewById<LinearLayout>(R.id.colorContainer)
-        val colors = listOf("#BDBDBD", "#616161", "#EF5350", "#FFA726", "#FFEE58", "#66BB6A", "#42A5F5", "#AB47BC", "#EC407A")
-        val popupWindow = PopupWindow(popupView, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true)
-        popupWindow.elevation = 10f
-        for (colorHex in colors) {
-            val dot = View(this)
-            val size = (24 * resources.displayMetrics.density).toInt()
-            val margin = (6 * resources.displayMetrics.density).toInt()
-            val params = LinearLayout.LayoutParams(size, size).apply { setMargins(margin, 0, margin, 0) }
-            dot.layoutParams = params
-            val bg = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.shape_circle)?.mutate()
-            bg?.setTint(Color.parseColor(colorHex))
-            dot.background = bg
-            dot.setOnClickListener {
-                ivNoteColor.setColorFilter(Color.parseColor(colorHex))
-                selectedColorHex = colorHex
-                popupWindow.dismiss()
-            }
-            container.addView(dot)
-        }
-        popupWindow.showAsDropDown(anchorView, 0, -20)
-    }
-
-    // --- DEĞİŞTİRİLEN KISIM: READER MODE ---
     private fun switchToReaderMode() {
         isEditMode = false
         val rawText = etContent.text.toString()
@@ -456,20 +493,14 @@ class EditorActivity : AppCompatActivity() {
         etContent.visibility = View.GONE
         bottomBar.visibility = View.GONE
         svReader.visibility = View.VISIBLE
-
-        // --- YENİ EKLENEN KISIM ---
-        // Araç çubuğu gidince kart aşağı yapışmasın diye boşluğu artırıyoruz (50dp)
         updateCardBottomMargin(30)
-        // --------------------------
     }
+
     private fun switchToEditorMode() {
         isEditMode = true
         svReader.visibility = View.GONE
         etContent.visibility = View.VISIBLE
-
-        // Düzenleme modunda araç çubuğunu geri getir
         bottomBar.visibility = View.VISIBLE
-
         etContent.requestFocus()
         updateCardBottomMargin(12)
     }
@@ -519,13 +550,9 @@ class EditorActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.btnHeader).setOnClickListener { insertFormatting("# ", "") }
         findViewById<TextView>(R.id.btnList).setOnClickListener { insertFormatting("- ", "") }
 
-        // --- DEĞİŞTİRİLEN KISIM: Done Butonu ---
         findViewById<TextView>(R.id.btnSave).setOnClickListener {
             val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
             imm.hideSoftInputFromWindow(etContent.windowToken, 0)
-
-            // saveAndExit() YERİNE switchToReaderMode()
-            // Böylece çıkış yapmaz, okuma moduna geçer.
             switchToReaderMode()
         }
     }
@@ -543,7 +570,6 @@ class EditorActivity : AppCompatActivity() {
         }
     }
 
-    // --- SMART KEYBOARD (SADECE LİSTE YÖNETİMİ) ---
     private fun setupSmartKeyboard() {
         etContent.addTextChangedListener(object : TextWatcher {
             private var isFormatting = false
@@ -563,7 +589,6 @@ class EditorActivity : AppCompatActivity() {
 
                 val lastChar = s[cursorPosition - 1]
 
-                // ÖZELLİK 1: BACKSPACE İLE MADDE SİLME (Listenin başındayken silince maddeyi kaldırır)
                 if (isDeletion) {
                     val textStr = s.toString()
                     var lineStart = textStr.lastIndexOf('\n', cursorPosition - 1) + 1
@@ -579,7 +604,6 @@ class EditorActivity : AppCompatActivity() {
                     }
                 }
 
-                // ÖZELLİK 2: ENTER İLE OTOMATİK LİSTE (Alt satıra geçince madde ekler)
                 if (lastChar == '\n') {
                     val textStr = s.toString()
                     val currentLineEnd = cursorPosition - 1
@@ -588,14 +612,12 @@ class EditorActivity : AppCompatActivity() {
                     val prevLineContent = textStr.substring(prevLineStart, currentLineEnd)
                     val trimmed = prevLineContent.trim()
 
-                    // Eğer satırda sadece tire varsa ve enter'a basıldıysa listeyi bitir
                     if (trimmed == "-" || trimmed == "*") {
                         isFormatting = true
                         s.delete(prevLineStart, cursorPosition)
                         isFormatting = false
                         return
                     }
-                    // Eğer dolu bir madde ise alt satıra tire ekle
                     else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
                         isFormatting = true
                         s.insert(cursorPosition, "- ")
@@ -603,9 +625,74 @@ class EditorActivity : AppCompatActivity() {
                         return
                     }
                 }
-
-                // ÖZELLİK 3 (Space ile dışarı atma) TAMAMEN KALDIRILDI.
-                // Artık **kalın yazı yazarken** boşluğa basınca dışarı atmayacak.
             }
         })
-    }}
+
+    }
+
+    private fun shareNoteText() {
+        val title = etTitle.text.toString().trim()
+        val rawContent = etContent.text.toString()
+
+        // 1. Önce "Audio Note: ..." satırını temizle
+        val contentWithoutAudio = rawContent.replace(Regex("Audio Note:.*\\.m4a"), "").trim()
+
+        // 2. Şimdi Markdown işaretlerini temizle (Yıldızlar, Kareler gitsin)
+        val cleanContent = getCleanTextFromMarkdown(contentWithoutAudio)
+
+        // 3. Başlık ve Temiz Metni Birleştir
+        val textToShare = StringBuilder()
+        if (title.isNotEmpty()) textToShare.append(title).append("\n\n")
+        textToShare.append(cleanContent)
+
+        if (textToShare.isBlank()) {
+            Toast.makeText(this, "Nothing to share", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val shareIntent = Intent().apply {
+            action = Intent.ACTION_SEND
+            putExtra(Intent.EXTRA_TEXT, textToShare.toString())
+            type = "text/plain"
+        }
+        startActivity(Intent.createChooser(shareIntent, "Share Note via"))
+    }
+
+
+    // Markdown formatını temizleyip düz metne çeviren yardımcı fonksiyon
+    private fun getCleanTextFromMarkdown(markdown: String): String {
+        var text = markdown
+
+        // 1. Başlıkları Temizle (# Başlık -> Başlık)
+        // (?m) satır başlarını algılamasını sağlar
+        text = text.replace(Regex("(?m)^#{1,6}\\s+"), "")
+
+        // 2. Kalın (Bold) (**text** -> text)
+        text = text.replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
+        text = text.replace(Regex("__(.*?)__"), "$1")
+
+        // 3. İtalik (*text* -> text)
+        text = text.replace(Regex("\\*(.*?)\\*"), "$1")
+        text = text.replace(Regex("_(.*?)_"), "$1")
+
+        // 4. Üstü Çizili (~~text~~ -> text)
+        text = text.replace(Regex("~~(.*?)~~"), "$1")
+
+        // 5. Linkler ([Title](url) -> Title: url)
+        // Linkleri tamamen silmek yerine okunabilir hale getiriyoruz
+        text = text.replace(Regex("\\[([^\\]]+)\\]\\(([^\\)]+)\\)"), "$1 ($2)")
+
+        // 6. Kod Blokları (```) ve Satır içi Kod (`)
+        text = text.replace("```", "")
+        text = text.replace("`", "")
+
+        // 7. Liste İşaretleri (* Item veya - Item -> • Item)
+        // Markdown yıldızlarını, düz metinde şık duran "•" (Bullet) işaretine çeviriyoruz.
+        text = text.replace(Regex("(?m)^\\s*[*\\-]\\s+"), "• ")
+
+        // 8. Blockquote (> text -> text)
+        text = text.replace(Regex("(?m)^>\\s+"), "")
+
+        return text.trim()
+    }
+}

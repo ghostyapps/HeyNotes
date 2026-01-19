@@ -19,9 +19,28 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.ContextCompat
 
+import android.app.Activity
+
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.Scope
+import com.google.api.services.drive.DriveScopes
+
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var tvGeminiInstructions: TextView
+
+
+    // Google Sign-In Sonucunu Dinleyen Başlatıcı
+    private val signInLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            handleSignInResult(task)
+        } else {
+            findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switchDriveSync).isChecked = false
+            Toast.makeText(this, "Sign in failed", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // PIN doğrulama durumunu takip etmek için
     private var isVerifyingOldPin = true
@@ -70,7 +89,56 @@ class SettingsActivity : AppCompatActivity() {
         setupGeminiSettings()
         setupPinSettings() // PIN ayarları buraya eklendi
         setupInstructionsText()
+        setupDriveSettings()
     }
+
+
+    private fun setupDriveSettings() {
+        val switchDrive = findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switchDriveSync)
+        // Eğer XML'de bu ID yoksa activity_settings.xml dosyana bir Switch ekleyip id'sini switchDriveSync yapmalısın.
+
+        val prefs = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+        switchDrive.isChecked = prefs.getBoolean("drive_sync_enabled", false)
+
+        switchDrive.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                requestSignIn()
+            } else {
+                val client = GoogleSignIn.getClient(this, GoogleSignInOptions.DEFAULT_SIGN_IN)
+                client.signOut()
+                prefs.edit().putBoolean("drive_sync_enabled", false).apply()
+            }
+        }
+    }
+
+    private fun requestSignIn() {
+        val signInOptions = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestScopes(Scope(DriveScopes.DRIVE_FILE))
+            .build()
+
+        val client = GoogleSignIn.getClient(this, signInOptions)
+        signInLauncher.launch(client.signInIntent)
+    }
+
+    private fun handleSignInResult(task: com.google.android.gms.tasks.Task<com.google.android.gms.auth.api.signin.GoogleSignInAccount>) {
+        try {
+            val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+            getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("drive_sync_enabled", true)
+                .putString("google_account_email", account.email)
+                .apply()
+            Toast.makeText(this, "Connected: ${account.email}", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switchDriveSync).isChecked = false
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+
+
+
 
     // --- PIN AYARLARI BAŞLANGIÇ ---
 

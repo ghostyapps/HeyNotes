@@ -61,10 +61,24 @@
 
             <ImageView
                 android:id="@+id/ivNoteColor"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:src="@drawable/shape_circle"
-                app:tint="@color/text_color_alt"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginEnd="16dp"
+                android:src="@drawable/ic_dropdown"
+                android:background="@null"
+                android:scaleType="fitCenter"
+                app:tint="@color/text_color"
+                app:layout_constraintBottom_toBottomOf="@+id/etTitle"
+                app:layout_constraintTop_toTopOf="@+id/etTitle"
+                app:layout_constraintEnd_toStartOf="@+id/ivShare" />
+            <ImageView
+                android:id="@+id/ivShare"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@drawable/ic_share"
+                android:background="@null"
+                android:scaleType="fitCenter"
+                app:tint="@color/text_color"
                 app:layout_constraintBottom_toBottomOf="@+id/etTitle"
                 app:layout_constraintTop_toTopOf="@+id/etTitle"
                 app:layout_constraintEnd_toEndOf="parent" />

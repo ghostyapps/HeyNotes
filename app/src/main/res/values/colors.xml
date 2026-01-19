@@ -26,7 +26,9 @@
 
 
     <color name="header_card_background">#F2F2F2</color>
+    <color name="button_color">#212529</color>
 
+    <color name="accent_color_faded">#802196F3</color>
     <!-- Dark text -->
     <color name="text_color">#202124</color>
     <!-- Lighter text for secondary info -->

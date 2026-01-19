@@ -16,8 +16,9 @@
     <color name="background_color">#000000</color>
 
     <color name="header_background">#1E1E1E</color>
-    <color name="card_surface">#131313</color>
+    <color name="card_surface">#1F1F1F</color>
     <color name="card_surface_alt">#292929</color>
+    <color name="button_color">#292929</color>
 
 
     <color name="text_color">#E0E0E0</color>

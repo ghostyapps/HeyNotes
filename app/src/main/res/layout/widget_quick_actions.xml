@@ -1,26 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/widget_background"
     android:gravity="center"
     android:orientation="horizontal"
-    android:paddingStart="12dp"
-    android:paddingTop="16dp"
-    android:paddingEnd="12dp"
-    android:paddingBottom="16dp">
+    android:paddingLeft="8dp"
+    android:paddingTop="12dp"
+    android:paddingRight="8dp"
+    android:paddingBottom="12dp">
 
     <FrameLayout
         android:id="@+id/btnWidgetVoice"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_weight="1"
         android:padding="6dp">
 
         <ImageView
             android:id="@+id/ivWidgetVoice"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_gravity="center"
             android:src="@drawable/ic_voice_icon"
             android:contentDescription="Voice Note"
             app:tint="@color/text_color" />
@@ -29,22 +32,25 @@
     <ImageView
         android:layout_width="1dp"
         android:layout_height="20dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp"
+        android:layout_gravity="center_vertical"
+        android:layout_marginLeft="4dp"
+        android:layout_marginRight="4dp"
         android:background="@color/text_color_alt"
         android:alpha="0.4"
-        android:contentDescription="Divider"/>
+        android:contentDescription="Divider" />
 
     <FrameLayout
         android:id="@+id/btnWidgetText"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_weight="1"
         android:padding="6dp">
 
         <ImageView
             android:id="@+id/ivWidgetNote"
-            android:layout_width="34dp"
-            android:layout_height="34dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_gravity="center"
             android:src="@drawable/ic_notes_icon"
             android:contentDescription="Text Note"
             app:tint="@color/text_color" />

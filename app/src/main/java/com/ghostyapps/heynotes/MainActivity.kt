@@ -39,7 +39,12 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Calendar
 
+
+
 class MainActivity : AppCompatActivity() {
+
+    // YENİ EKLENECEK:
+    private lateinit var titleStorage: TitleStorage
 
     // Helpers
     private var driveServiceHelper: DriveServiceHelper? = null
@@ -70,6 +75,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvSubtitle: TextView
     private lateinit var layoutFolderSelector: LinearLayout
     private lateinit var recyclerNotes: RecyclerView
+
+
+    // Search UI
+    private lateinit var etSearch: EditText
+    private lateinit var ivSearchIcon: ImageView
+    private lateinit var ivCloseSearch: ImageView
+    private var isSearching = false // Arama modunda mıyız?
+
+    private lateinit var searchContainer: LinearLayout
+    private lateinit var tvSearchLabel: TextView
 
 
     // Alt Aksiyon Butonları
@@ -111,14 +126,13 @@ class MainActivity : AppCompatActivity() {
     private fun processGeminiAndNavigate(audioFile: File) {
         // 1. UI BAŞLATMA
         geminiLoadingContainer.visibility = View.VISIBLE
+        geminiLoadingContainer.alpha = 1f
         geminiLoadingContainer.setOnClickListener(null)
         lottieGemini.playAnimation()
 
-        // Durum Başlığı
         tvGeminiStatus.text = "Transcribing..."
         tvGeminiStatus.setTextColor(getColor(R.color.text_color))
 
-        // Açıklama Metni (GÖRÜNÜR YAPILDI)
         tvGeminiAction.text = "AI is analyzing your voice..."
         tvGeminiAction.setTextColor(getColor(R.color.text_color_alt))
         tvGeminiAction.visibility = View.VISIBLE
@@ -130,13 +144,25 @@ class MainActivity : AppCompatActivity() {
             var uiErrorTitle = ""
             var uiErrorDescription = ""
 
-            // --- GÜNCELLENMİŞ PROMPT ---
-            // Dil kuralı ve temizlik kuralı güçlendirildi.
+            // --- JSON İSTEYEN GARANTİ PROMPT ---
             val geminiPrompt = """
-                Analyze this audio. 
-                Return ONLY a raw JSON object (no markdown code blocks, no explanations) with exactly these two keys:
-                "title": "A short, concise title (max 5 words) written in the SAME LANGUAGE as the spoken audio. It must capture the main topic.",
-                "body": "Provide a full 'Clean Verbatim' transcription in the SAME LANGUAGE as the spoken audio. Remove filler words (like 'umm', 'ahh', 'ııı', 'eee'), stutters, and false starts. Do not summarize; write exactly what was said but make it readable. Format nicely with Markdown."
+                You are a professional transcriber. 
+                
+                INSTRUCTIONS:
+                1. **Language:** Detect the language of the audio. Output the text in the SAME language.
+                2. **Format:** You MUST return a valid JSON object. Do not include any explanation or markdown formatting outside the JSON.
+                
+                The JSON structure must be exactly:
+                {
+                  "title": "A short, concise summary title (max 5 words)",
+                  "body": "The full transcription content here..."
+                }
+                
+                3. **Transcription Rules for the 'body' field:**
+                   - **Speaker ID:** If multiple people are speaking, label them (e.g., **Speaker 1:**).
+                   - **Paragraphs:** Use '\n\n' to separate speakers or paragraphs.
+                   - **Cleaning:** Use 'Clean Verbatim'. Remove filler words (umm, ahh, err, ııı, eee).
+                   - **Markdown:** You can use Markdown syntax (like **bold**) INSIDE the JSON string value, but ensure it is properly escaped for JSON.
             """.trimIndent()
 
             try {
@@ -147,7 +173,10 @@ class MainActivity : AppCompatActivity() {
 
                 val generativeModel = com.google.ai.client.generativeai.GenerativeModel(
                     modelName = "gemini-3-flash-preview",
-                    apiKey = apiKey
+                    apiKey = apiKey,
+                    // JSON çıktısını garantilemek için responseMimeType ayarı (Gemini 1.5 ve üzeri destekler)
+                    // generationConfig = com.google.ai.client.generativeai.type.generationConfig { responseMimeType = "application/json" }
+                    // Not: Eğer kütüphane sürümün eskiyse generationConfig satırını sil, prompt yeterli olur.
                 )
 
                 val inputContent = com.google.ai.client.generativeai.type.content {
@@ -158,14 +187,18 @@ class MainActivity : AppCompatActivity() {
                 val response = generativeModel.generateContent(inputContent)
                 val rawText = response.text ?: ""
 
-                val jsonString = rawText.replace("```json", "").replace("```", "").trim()
+                // --- JSON TEMİZLİK VE PARSING ---
+                // Gemini bazen ```json ... ``` blokları ekler, onları temizliyoruz.
+                val cleanJson = rawText.replace("```json", "").replace("```", "").trim()
+
                 try {
-                    val jsonObject = org.json.JSONObject(jsonString)
+                    val jsonObject = org.json.JSONObject(cleanJson)
                     finalTitle = jsonObject.optString("title", "")
                     finalBody = jsonObject.optString("body", "")
                 } catch (e: Exception) {
+                    // JSON patlarsa (çok nadir), metni olduğu gibi gövdeye at
                     finalTitle = ""
-                    finalBody = rawText
+                    finalBody = rawText // Ham metni kaybetmeyelim
                 }
 
             } catch (e: Exception) {
@@ -173,7 +206,6 @@ class MainActivity : AppCompatActivity() {
                 val msg = e.localizedMessage ?: ""
                 e.printStackTrace()
 
-                // HATA TESPİTİ
                 when {
                     msg.contains("API key", true) || msg.contains("403") -> {
                         uiErrorTitle = "Invalid API Key"
@@ -191,10 +223,6 @@ class MainActivity : AppCompatActivity() {
                         uiErrorTitle = "Missing API Key"
                         uiErrorDescription = "Enter Key in Settings."
                     }
-                    msg.contains("found", true) || msg.contains("404") -> {
-                        uiErrorTitle = "Model Unavailable"
-                        uiErrorDescription = "Gemini-3 is not ready."
-                    }
                     else -> {
                         uiErrorTitle = "Process Failed"
                         uiErrorDescription = "Error occurred."
@@ -205,37 +233,40 @@ class MainActivity : AppCompatActivity() {
                     if (isError) {
                         // --- HATA DURUMU ---
                         lottieGemini.pauseAnimation()
-
                         tvGeminiStatus.text = uiErrorTitle
                         tvGeminiStatus.setTextColor(getColor(R.color.text_color))
-
-                        tvGeminiAction.text = "$uiErrorDescription\n\n(Tap anywhere to close)"
-                        tvGeminiAction.setTextColor(getColor(R.color.text_color))
+                        tvGeminiAction.text = "$uiErrorDescription\n\n(Tap to save without AI)"
                         tvGeminiAction.visibility = View.VISIBLE
 
                         geminiLoadingContainer.setOnClickListener {
                             geminiLoadingContainer.visibility = View.GONE
-
                             val timestamp = java.text.SimpleDateFormat("yyyy.MM.dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
                             val defaultTitle = "Voice Note $timestamp"
                             val errorBody = "(Transcription failed: $uiErrorDescription)"
 
-                            saveAndNavigateToVoiceFolder(audioFile, defaultTitle, errorBody)
+                            // Hata durumunda (fromGemini = false -> Animasyon hemen kapanır)
+                            saveAndNavigateToVoiceFolder(audioFile, defaultTitle, errorBody, fromGemini = false)
                         }
 
                     } else {
-                        // --- BAŞARI DURUMU ---
-                        geminiLoadingContainer.visibility = View.GONE
+                        // --- BAŞARI (JSON BAŞARIYLA AYRIŞTIRILDI) ---
+                        tvGeminiStatus.text = "Formatting note..."
+                        tvGeminiAction.text = "Almost done."
 
-                        val finalTitleToSave = if (finalTitle.isNotBlank()) finalTitle else "Voice Note " + java.text.SimpleDateFormat("yyyy.MM.dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+                        // Eğer başlık boşsa tarih ata
+                        val safeTitle = if (finalTitle.isNotBlank()) {
+                            finalTitle.replace(Regex("[\\\\/:*?\"<>|#]"), "").take(50)
+                        } else {
+                            "Voice Note " + java.text.SimpleDateFormat("yyyy.MM.dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+                        }
 
-                        saveAndNavigateToVoiceFolder(audioFile, finalTitleToSave, finalBody)
+                        // Kayıt fonksiyonuna gönder (fromGemini = true -> İşlem bitince animasyon kapanır)
+                        saveAndNavigateToVoiceFolder(audioFile, safeTitle, finalBody, fromGemini = true)
                     }
                 }
             }
         }
     }
-
     private val editorLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val data = result.data ?: return@registerForActivityResult
@@ -249,21 +280,20 @@ class MainActivity : AppCompatActivity() {
                 deleteSingleFile(originalId)
             } else {
                 lifecycleScope.launch(Dispatchers.IO) {
-                    // --- AKILLI KAYIT KONTROLÜ ---
-                    // Eğer bu var olan bir not ise (originalId != null),
-                    // İçeriğin gerçekten değişip değişmediğini kontrol et.
-                    var hasChanged = true
+                    // --- AKILLI DEĞİŞİKLİK KONTROLÜ ---
+                    var contentOrTitleChanged = true
+                    var colorChanged = false
 
                     if (originalId != null) {
                         try {
-                            // 1. Dosyadaki mevcut içeriği oku
+                            // 1. Dosyadaki mevcut metin içeriğini oku
                             val oldContent = if (isDriveMode) {
                                 driveServiceHelper?.readFile(originalId) ?: ""
                             } else {
                                 localServiceHelper.readFile(originalId)
                             }
 
-                            // 2. Listedeki eski başlığı bul
+                            // 2. Listedeki eski başlığı ve rengi al
                             val oldNoteItem = currentNotes.find { it.id == originalId }
                             val oldTitleRaw = oldNoteItem?.name ?: ""
 
@@ -273,26 +303,38 @@ class MainActivity : AppCompatActivity() {
 
                             // 3. İçerik ve Başlık Aynı mı?
                             if (oldContent == content && cleanOldTitle == cleanNewTitle) {
-                                // İçerik ve başlık aynıysa, sadece renk değişmiş olabilir.
-                                // Eğer renk de değişmediyse veya önemsizse KAYDETME.
-                                // Renk kontrolünü de ekleyelim:
-                                val oldColorInt = oldNoteItem?.color
-                                val newColorInt = if (colorHex != null) Color.parseColor(colorHex) else oldColorInt
+                                contentOrTitleChanged = false
+                            }
 
-                                if (oldColorInt == newColorInt) {
-                                    hasChanged = false
+                            // 4. Renk Değişti mi?
+                            val oldColorInt = oldNoteItem?.color
+                            if (colorHex != null) {
+                                val newColorInt = Color.parseColor(colorHex)
+                                if (oldColorInt != newColorInt) {
+                                    colorChanged = true
                                 }
                             }
+
                         } catch (e: Exception) {
-                            // Okuma hatası olursa güvenli tarafı seçip kaydedelim
-                            hasChanged = true
+                            // Okuma hatası olursa güvenli tarafı seçip normal kayıt yapalım
+                            contentOrTitleChanged = true
                         }
                     }
 
-                    // Sadece değişiklik varsa veya yeni bir not ise kaydet
-                    if (hasChanged) {
+                    // --- KARAR VE KAYIT ---
+                    if (contentOrTitleChanged) {
+                        // A) İçerik veya Başlık değişti:
+                        // Normal kayıt fonksiyonunu çağır (Dosya güncellenir, Tarih DEĞİŞİR)
                         saveNote(title, content, originalId, colorHex)
+                    } else if (colorChanged && originalId != null && colorHex != null) {
+                        // B) Sadece Renk değişti:
+                        // Dosyaya DOKUNMA (Böylece tarih değişmez), sadece rengi kaydet.
+                        colorStorage.saveColor(originalId, colorHex)
+
+                        // Arayüzü yenile
+                        withContext(Dispatchers.Main) { loadContent() }
                     }
+                    // C) Hiçbir şey değişmediyse hiçbir şey yapma.
                 }
             }
         }
@@ -363,12 +405,14 @@ class MainActivity : AppCompatActivity() {
         colorStorage = ColorStorage(this)
         securityStorage = SecurityStorage(this)
         currentLocalDir = localServiceHelper.getRootFolder()
+        titleStorage = TitleStorage(this)
 
         // checkOnboarding() çağrısını sildik çünkü yukarıda hallettik.
         setupUI()
         setupBottomActions()
         setupAdapters()
         setupBackNavigation()
+        checkDriveLogin()
 
         // İzin kontrolü (Sadece onboarding bittiyse çalışır)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -381,8 +425,77 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+    private fun checkDriveLogin() {
+        val prefs = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+        val isEnabled = prefs.getBoolean("drive_sync_enabled", false)
+
+        if (isEnabled) {
+            val account = com.google.android.gms.auth.api.signin.GoogleSignIn.getLastSignedInAccount(this)
+            if (account != null) {
+                val credential = com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential.usingOAuth2(
+                    this, java.util.Collections.singleton(com.google.api.services.drive.DriveScopes.DRIVE_FILE)
+                )
+                credential.selectedAccount = account.account
+
+                val googleDriveService = com.google.api.services.drive.Drive.Builder(
+                    com.google.api.client.http.javanet.NetHttpTransport(),
+                    com.google.api.client.json.gson.GsonFactory(),
+                    credential
+                ).setApplicationName("HeyNotes").build()
+
+                driveServiceHelper = DriveServiceHelper(googleDriveService)
+
+                // Drive modunu başlat
+                isDriveMode = true
+                initializeDriveStructure()
+            }
+        } else {
+            isDriveMode = false
+        }
+    }
+
+    private fun initializeDriveStructure() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val folderId = driveServiceHelper?.getOrCreateRootFolder()
+
+                if (folderId != null) {
+                    rootDriveId = folderId
+                    currentDriveId = folderId
+
+                    withContext(Dispatchers.Main) {
+                        loadContent()
+
+                        // --- DEĞİŞİKLİK BURADA: Soru sorma, direkt kontrol et ve eşitle ---
+                        checkAndSyncBackground()
+                        // -----------------------------------------------------------------
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    isDriveMode = false
+                    // Hata mesajını sessize alabiliriz veya loglayabiliriz
+                    // Toast.makeText(this@MainActivity, "Drive Init Error...", ...).show()
+                    loadContent()
+                }
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+
+        val prefs = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+        val shouldBeDrive = prefs.getBoolean("drive_sync_enabled", false)
+
+        // Eğer ayarlardaki durum ile şu anki mod uyuşmuyorsa, sayfayı tamamen yenile
+        if (isDriveMode != shouldBeDrive) {
+            val intent = Intent(this, MainActivity::class.java)
+            finish()
+            startActivity(intent)
+            return
+        }
+
         val prefsUser = getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
         userName = prefsUser.getString("user_name", "User") ?: "User"
 
@@ -490,12 +603,29 @@ class MainActivity : AppCompatActivity() {
         tvGeminiStatus = findViewById(R.id.tvGeminiStatus)
         tvGeminiAction = findViewById(R.id.tvGeminiAction)
 
-        findViewById<ImageView>(R.id.ivHeaderGraphic).setOnClickListener { showSettingsMenu(it) }
+        // --- DEĞİŞİKLİK BURADA ---
+        // Eski ikon satırını sildik: findViewById<ImageView>(R.id.ivHeaderGraphic)...
+        // Yerine başlık alanına tıklama özelliği ekledik:
+        findViewById<LinearLayout>(R.id.headerTextContainer).setOnClickListener { showSettingsMenu(it) }
+        // -------------------------
 
-        layoutFolderSelector.setOnClickListener { showFolderSelectionDialog() }
-
-        btnBulkMove.setOnClickListener { showBulkMoveDialog() }
+        layoutFolderSelector.setOnClickListener { showNavigationDialog() }
+// Artık navigasyon dialogunu çağırıyoruz.
+        // Örnek: Selection Mode menüsündeki Move ikonuna tıklandığında
+        btnBulkMove.setOnClickListener {
+            showBulkMoveDialog()
+        }
         btnBulkDelete.setOnClickListener { showDeleteConfirmation() }
+
+        // Search UI Tanımları
+        searchContainer = findViewById(R.id.searchContainer) // Container'ı tanımla
+        tvSearchLabel = findViewById(R.id.tvSearchLabel) // Label'ı tanımla
+        // ... diğer tanımlamalar (etSearch, ivSearchIcon, ivCloseSearch) aynı kalıyor
+        etSearch = findViewById(R.id.etSearch)
+        ivSearchIcon = findViewById(R.id.ivSearchIcon)
+        ivCloseSearch = findViewById(R.id.ivCloseSearch)
+
+        setupSearchLogic()
     }
 
     private fun setupBottomActions() {
@@ -507,7 +637,14 @@ class MainActivity : AppCompatActivity() {
             if (isSelectionMode) return@setOnClickListener
             val intent = Intent(this, EditorActivity::class.java)
             val activeFolder = currentFolders.find { it.isActive }
-            if (activeFolder != null && activeFolder.id != "ROOT" && activeFolder.id != "favorites") {
+
+            // Eğer klasör ROOT değilse, favorites değilse VE Voice Notes değilse klasör ID'sini gönder.
+            // (Voice Notes ise ID göndermez, böylece not Main'e düşer)
+            if (activeFolder != null &&
+                activeFolder.id != "ROOT" &&
+                activeFolder.id != "favorites" &&
+                !activeFolder.name.contains("Voice Note")) {
+
                 intent.putExtra("FOLDER_ID", activeFolder.id)
             }
             editorLauncher.launch(intent)
@@ -530,14 +667,118 @@ class MainActivity : AppCompatActivity() {
 
 
 
+    // ------------------------------------------------------------------------
+    // YENİ VE DÜZELTİLMİŞ showCreateFolderDialog
+    // ------------------------------------------------------------------------
+    private fun showCreateFolderDialog() {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_create_folder, null)
+        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        val etFolderName = dialogView.findViewById<EditText>(R.id.etFolderName)
+        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
+        val btnCreate = dialogView.findViewById<TextView>(R.id.btnCreate)
+        val colorContainer = dialogView.findViewById<LinearLayout>(R.id.colorContainer)
+
+        var selectedColor = "#FFFFFF"
+        val colors = ColorStorage.colors
+
+        for (colorHex in colors) {
+            val dot = View(this)
+            val size = (32 * resources.displayMetrics.density).toInt()
+            val margin = (4 * resources.displayMetrics.density).toInt()
+
+            val params = LinearLayout.LayoutParams(size, size).apply {
+                setMargins(margin, 0, margin, 0)
+            }
+            dot.layoutParams = params
+
+            val bg = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.shape_circle)?.mutate() as? android.graphics.drawable.GradientDrawable
+
+            try {
+                bg?.setColor(Color.parseColor(colorHex))
+                // Beyaz renk kaybolmasın diye ince gri çerçeve (Aynen koruyoruz)
+                if (colorHex.equals("#FFFFFF", ignoreCase = true)) {
+                    val strokeColor = Color.parseColor("#E0E0E0")
+                    val strokeWidth = (1 * resources.displayMetrics.density).toInt()
+                    bg?.setStroke(strokeWidth, strokeColor)
+                } else {
+                    bg?.setStroke(0, 0)
+                }
+            } catch (e: Exception) {
+                bg?.setColor(Color.LTGRAY)
+            }
+            dot.background = bg
+
+            // --- DEĞİŞİKLİK BURADA: OPAKLIĞI KALDIRDIK ---
+            dot.alpha = 1.0f // Artık hepsi %100 canlı görünecek
+
+            // Seçim durumu: Sadece BOYUT farkı ile gösteriyoruz
+            if (colorHex == selectedColor) {
+                dot.scaleX = 1.2f // Seçili olan biraz daha büyük
+                dot.scaleY = 1.2f
+            } else {
+                dot.scaleX = 1.0f
+                dot.scaleY = 1.0f
+            }
+
+            dot.setOnClickListener {
+                selectedColor = colorHex
+                // Animasyon: Tüm topların boyutunu normale döndür (Alpha ile oynamıyoruz)
+                for (i in 0 until colorContainer.childCount) {
+                    val child = colorContainer.getChildAt(i)
+                    child.animate().scaleX(1f).scaleY(1f).setDuration(200).start()
+                }
+                // Tıklananı büyüt
+                dot.animate().scaleX(1.2f).scaleY(1.2f).setDuration(200).start()
+            }
+
+            colorContainer.addView(dot)
+        }
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+
+        btnCreate.setOnClickListener {
+            val folderName = etFolderName.text.toString().trim()
+            if (folderName.isNotEmpty()) {
+                createNewFolder(folderName, selectedColor)
+                dialog.dismiss()
+            } else {
+                Toast.makeText(this, "Enter a folder name", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        dialog.show()
+    }
+    // ------------------------------------------------------------------------
+    // EKSİK OLAN createNewFolder FONKSİYONU
+    // ------------------------------------------------------------------------
+    private fun createNewFolder(folderName: String, colorHex: String) {
+        val rootFolder = localServiceHelper.getRootFolder()
+        val newFolder = java.io.File(rootFolder, folderName)
+
+        if (!newFolder.exists()) {
+            val created = newFolder.mkdirs()
+            if (created) {
+                // Rengi klasörün tam yolu (path) ile kaydediyoruz
+                colorStorage.saveColor(newFolder.absolutePath, colorHex)
+
+                // Listeyi yeniliyoruz
+                loadContent()
+
+                Toast.makeText(this, "Folder created", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Error creating folder", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(this, "Folder already exists", Toast.LENGTH_SHORT).show()
+        }
+    }
 
 
-    // Dosya isminde olmaması gereken karakterleri temizler
     private fun getSafeFileName(input: String): String {
-        return input.replace(":", " -")
-            .replace("/", "_")
-            .replace("\\", "_")
-            .trim()
+        // \ / : * ? " < > | karakterlerini _ ile değiştirir
+        return input.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
     }
 
     /**
@@ -545,62 +786,103 @@ class MainActivity : AppCompatActivity() {
      * title = "" diyerek varsayılan değer atadık.
      * Böylece eski kod (satır 104) başlık göndermese bile burası çalışır.
      */
-    private fun saveAndNavigateToVoiceFolder(audioFile: File, title: String = "", content: String = "") {
-        // 1. Hedef Klasör: Documents/HeyNotes/Voice Notes
-        val rootFolder = localServiceHelper.getRootFolder()
-        val voiceFolder = java.io.File(rootFolder, "Voice Notes")
+    /**
+     * GÜNCELLENMİŞ VERSİYON:
+     * - Ses dosyasını Drive'a yükler
+     * - Rastgele renk verir
+     * - Hafızaya (History) kaydeder
+     * - Otomatik olarak Voice Notes klasörünü açar
+     */
+    /**
+     * GÜNCELLENMİŞ VERSİYON:
+     * - "fromGemini" parametresi eklendi.
+     * - Eğer Gemini'den geldiyse, kayıt işlemi bitene kadar animasyon dönmeye devam eder.
+     * - Kayıt bitince animasyon kapanır ve klasör açılır.
+     */
+    private fun saveAndNavigateToVoiceFolder(
+        audioFile: File,
+        title: String = "",
+        content: String = "",
+        fromGemini: Boolean = false // Varsayılan değer false (Normal kayıt için)
+    ) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            // ... (Klasör hazırlığı, Dosya kopyalama, Renk atama, Drive işlemleri) ...
+            // ... (Bu kısımlar önceki kodunuzla AYNI) ...
 
-        if (!voiceFolder.exists()) {
-            voiceFolder.mkdirs()
-        }
+            // 1. Klasör Hazırlığı
+            val rootFolder = localServiceHelper.getRootFolder()
+            val voiceFolder = java.io.File(rootFolder, "Voice Notes")
+            if (!voiceFolder.exists()) voiceFolder.mkdirs()
 
-        // 2. İsimlendirme (Gemini'dan gelen Title varsa onu kullan, yoksa Tarih)
-        val timestamp = java.text.SimpleDateFormat("yyyy.MM.dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
-        val displayTitle = if (title.isNotEmpty()) title else "Voice Note $timestamp"
+            // 2. İsimlendirme ve Dosya Oluşturma (Aynı)
+            val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+            val displayTitle = if (title.isNotEmpty()) title else "Voice Note $timestamp"
+            val safeFileName = displayTitle.replace(Regex("[\\\\/:*?\"<>|#]"), "").trim()
+            val finalFileName = if (safeFileName.isNotEmpty()) safeFileName else "Voice Note $timestamp"
 
-        // Dosya sistemi için güvenli isim yap
-        val safeFileName = displayTitle.replace(Regex("[\\\\/:*?\"<>|#]"), "").trim()
-        val finalFileName = if (safeFileName.isNotEmpty()) safeFileName else "Voice Note $timestamp"
+            val finalNoteFile = java.io.File(voiceFolder, "$finalFileName.md")
+            val finalAudioFile = java.io.File(voiceFolder, "$finalFileName.m4a")
 
-        // 3. Dosyalar (.md ve .m4a)
-        val finalNoteFile = java.io.File(voiceFolder, "$finalFileName.md") // ARTIK .md
-        val finalAudioFile = java.io.File(voiceFolder, "$finalFileName.m4a")
+            try {
+                // 3. Dosyaları Kaydet (Aynı)
+                if (audioFile.exists()) {
+                    audioFile.copyTo(finalAudioFile, overwrite = true)
+                }
 
-        try {
-            // 4. Ses Dosyasını Kopyala
-            // Geçici dosyayı kalıcı yerine, yeni ismiyle taşıyoruz
-            if (audioFile.exists()) {
-                audioFile.copyTo(finalAudioFile, overwrite = true)
-            }
+                val noteContent = StringBuilder()
+                if (content.isNotEmpty()) noteContent.append(content).append("\n\n")
+                noteContent.append("Audio Note: ${finalAudioFile.name}")
+                java.io.FileWriter(finalNoteFile).use { it.write(noteContent.toString()) }
 
-            // 5. İçerik Oluşturma (Markdown Formatı)
-            val noteContent = StringBuilder()
+                // 4. Renk ve Drive (Aynı)
+                val randomColor = ColorStorage.colors.random()
+                colorStorage.saveColor(finalNoteFile.absolutePath, randomColor)
 
-            // Eğer Gemini transkripsiyon yaptıysa metni ekle
-            if (content.isNotEmpty()) {
-                noteContent.append(content)
-                noteContent.append("\n\n") // Metinden sonra boşluk bırak
-            }
+                if (isDriveMode && driveServiceHelper != null && rootDriveId != null) {
+                    // ... Drive kodları aynı ...
+                    val voiceDriveId = getTargetDriveFolder("Voice Notes")
+                    driveServiceHelper?.createNote(voiceDriveId, finalNoteFile.name, noteContent.toString())
+                    driveServiceHelper?.uploadFile(voiceDriveId, finalAudioFile, "audio/mp4")
+                    addToSyncedHistory(finalNoteFile.name)
+                    addToSyncedHistory(finalAudioFile.name)
+                }
 
-            // EN ÖNEMLİ KISIM: EditorActivity'nin sesi tanıması için bu etiketi ekliyoruz
-            noteContent.append("Audio Note: ${finalAudioFile.name}")
+                // --- 6. NAVİGASYON VE UI (KRİTİK DEĞİŞİKLİK BURADA) ---
+                withContext(Dispatchers.Main) {
 
-            // 6. Dosyayı Yaz (.md olarak)
-            java.io.FileWriter(finalNoteFile).use { it.write(noteContent.toString()) }
+                    // Eğer Gemini'den geldiyse ve animasyon hala dönüyorsa ŞİMDİ kapat
+                    if (fromGemini) {
+                        hideGeminiLoading()
+                    }
 
-            runOnUiThread {
-                Toast.makeText(this, "Saved to Voice Notes", Toast.LENGTH_SHORT).show()
-                loadContent() // Listeyi yenile
-            }
+                    // Kullanıcıyı direkt "Voice Notes" klasörüne götür
+                    currentLocalDir = voiceFolder
 
-        } catch (e: Exception) {
-            e.printStackTrace()
-            runOnUiThread {
-                Toast.makeText(this, "Error saving note: ${e.message}", Toast.LENGTH_SHORT).show()
+                    if (isDriveMode) {
+                        if (!driveBreadcrumbs.contains("Voice Notes")) {
+                            driveBreadcrumbs.add("Voice Notes")
+                        }
+                    }
+
+                    isSelectionMode = false
+                    updateSelectionModeUI()
+                    loadContent() // Listeyi yenile
+
+                    // Toast mesajını sadece normal kayıtta gösterelim, Gemini zaten animasyonla belli etti
+                    if (!fromGemini) {
+                        Toast.makeText(this@MainActivity, "Voice note saved!", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    if (fromGemini) hideGeminiLoading()
+                    Toast.makeText(this@MainActivity, "Error saving note", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
-
 
     // --- NAVİGASYON YARDIMCISI ---
     private fun navigateToFolderAndRefresh(folderFile: File, folderName: String) {
@@ -700,15 +982,60 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun deleteSelectedItems() {
-        val notesToDelete = currentNotes.filter { it.isSelected }
+        val selected = currentNotes.filter { it.isSelected } + currentFolders.filter { it.isSelected }
+        if (selected.isEmpty()) return
+
+        // Silinecekleri önceden hazırla
+        val itemsToDeleteInfo = selected.map { item ->
+            val file = java.io.File(item.id)
+            Triple(item.id, file.name, file.parentFile?.name ?: "HeyNotes")
+        }
+
         lifecycleScope.launch(Dispatchers.IO) {
-            notesToDelete.forEach { item ->
-                if (isDriveMode) driveServiceHelper?.deleteFile(item.id)
-                else localServiceHelper.deleteFile(item.id)
+            // A. YEREL SİLME
+            itemsToDeleteInfo.forEach { (path, fileName, _) ->
+                localServiceHelper.deleteFile(path)
+
+                // HAFIZADAN DA SİL (Önemli!)
+                removeFromSyncedHistory(fileName)
+
+                if (!path.endsWith("Voice Notes")) {
+                    val noteFile = java.io.File(path)
+                    val audioPath = java.io.File(noteFile.parent, noteFile.nameWithoutExtension + ".m4a")
+                    if (audioPath.exists()) {
+                        audioPath.delete()
+                        removeFromSyncedHistory(audioPath.name) // Sesi de hafızadan sil
+                    }
+                }
             }
-            withContext(Dispatchers.Main) { loadContent() }
+
+            withContext(Dispatchers.Main) {
+                isSelectionMode = false
+                updateSelectionModeUI()
+                loadContent()
+                Toast.makeText(this@MainActivity, "Deleted ${selected.size} items", Toast.LENGTH_SHORT).show()
+            }
+
+            // C. DRIVE SİLME
+            if (isDriveMode && driveServiceHelper != null && rootDriveId != null) {
+                itemsToDeleteInfo.forEach { (path, fileName, parentName) ->
+                    try {
+                        val targetFolderId = getTargetDriveFolder(parentName)
+                        val driveFileId = driveServiceHelper?.findFileId(targetFolderId, fileName)
+                        if (driveFileId != null) driveServiceHelper?.deleteFile(driveFileId)
+
+                        if (!path.endsWith("Voice Notes")) {
+                            val nameWithoutExt = if (fileName.contains(".")) fileName.substringBeforeLast(".") else fileName
+                            val audioName = "$nameWithoutExt.m4a"
+                            val driveAudioId = driveServiceHelper?.findFileId(targetFolderId, audioName)
+                            if (driveAudioId != null) driveServiceHelper?.deleteFile(driveAudioId)
+                        }
+                    } catch (e: Exception) { e.printStackTrace() }
+                }
+            }
         }
     }
+
 
     private fun showSingleDeleteConfirmation(item: NoteItem) {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_delete_confirm, null)
@@ -746,60 +1073,7 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun showCreateFolderDialog() {
-        // XML'de checkbox olmasına gerek yok, kodla eklemeye de gerek yok.
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_create_folder, null)
-        val etFolderName = dialogView.findViewById<EditText>(R.id.etFolderName)
-        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
-        val btnCreate = dialogView.findViewById<TextView>(R.id.btnCreate)
-        val colorContainer = dialogView.findViewById<LinearLayout>(R.id.colorContainer)
 
-        // --- RENK SEÇİMİ (Aynı kalıyor) ---
-        val colors = listOf(
-            Color.parseColor("#607D8B"), Color.parseColor("#EF5350"),
-            Color.parseColor("#FFA726"), Color.parseColor("#FFEE58"),
-            Color.parseColor("#66BB6A"), Color.parseColor("#42A5F5"),
-            Color.parseColor("#AB47BC"), Color.parseColor("#EC407A"),
-            Color.parseColor("#8D6E63")
-        )
-        var selectedColor = colors[0]
-        val colorViews = mutableListOf<View>()
-        for (colorInt in colors) {
-            val colorView = View(this)
-            val size = (24 * resources.displayMetrics.density).toInt()
-            val margin = (6 * resources.displayMetrics.density).toInt()
-            val params = LinearLayout.LayoutParams(size, size).apply { setMargins(margin, 0, margin, 0) }
-            colorView.layoutParams = params
-            val drawable = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(colorInt)
-            }
-            colorView.background = drawable
-            colorView.setOnClickListener {
-                selectedColor = colorInt
-                updateColorBorders(colorViews, colors, selectedColor)
-            }
-            colorContainer.addView(colorView)
-            colorViews.add(colorView)
-        }
-        updateColorBorders(colorViews, colors, selectedColor)
-
-        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-
-        btnCancel.setOnClickListener { dialog.dismiss() }
-
-        btnCreate.setOnClickListener {
-            val folderName = etFolderName.text.toString().trim()
-            if (folderName.isNotEmpty()) {
-                // Sadece normal klasör oluşturuyoruz
-                val colorHex = String.format("#%06X", (0xFFFFFF and selectedColor))
-                createFolder(folderName, colorHex)
-                dialog.dismiss()
-            }
-        }
-        dialog.show()
-    }
 
 
     // --- YARDIMCI: RENK ÇERÇEVESİ GÜNCELLEME ---
@@ -924,81 +1198,194 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-    private fun openEditor(item: NoteItem?) {
-        val intent = Intent(this, EditorActivity::class.java)
-        if (item != null) {
-            intent.putExtra("NOTE_TITLE", item.name)
-            intent.putExtra("NOTE_ID", item.id)
-            intent.putExtra("NOTE_TIMESTAMP", item.timestamp)
-            lifecycleScope.launch(Dispatchers.IO) {
-                val content = if (!isDriveMode) localServiceHelper.readFile(item.id) else driveServiceHelper?.readFile(item.id) ?: ""
+    private fun openEditor(note: NoteItem) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // --- DÜZELTME BURADA ---
+                // Eskiden: if (isDriveMode) driveServiceHelper.readFile(note.id) else ...
+                // Yeni: Drive modu açık olsa bile, listeyi yerelden doldurduğumuz için ID bir dosya yoludur.
+                // Bu yüzden HER ZAMAN yerel okuma yapıyoruz.
+
+                val content = localServiceHelper.readFile(note.id)
+                val color = colorStorage.getColor(note.id)
+                val colorHex = if (color != null) String.format("#%06X", (0xFFFFFF and color)) else null
+
                 withContext(Dispatchers.Main) {
-                    intent.putExtra("NOTE_CONTENT", content)
+                    val intent = Intent(this@MainActivity, EditorActivity::class.java).apply {
+                        putExtra("NOTE_ID", note.id) // Artık bu bir dosya yolu
+                        putExtra("NOTE_TITLE", note.name)
+                        putExtra("NOTE_CONTENT", content)
+                        if (colorHex != null) {
+                            putExtra("NOTE_COLOR", colorHex)
+                        }
+                    }
                     editorLauncher.launch(intent)
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Error opening note: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
-        } else { editorLauncher.launch(intent) }
+        }
     }
 
     private fun deleteSingleFile(id: String) {
+        // Bilgileri önceden al
+        val localFile = java.io.File(id)
+        val fileName = localFile.name
+        val parentName = localFile.parentFile?.name ?: "HeyNotes"
+        val nameWithoutExt = localFile.nameWithoutExtension
+
         lifecycleScope.launch(Dispatchers.IO) {
-            if (isDriveMode) driveServiceHelper?.deleteFile(id) else localServiceHelper.deleteFile(id)
-            withContext(Dispatchers.Main) { loadContent() }
+            // 1. Yerel Silme
+            localServiceHelper.deleteFile(id)
+
+            removeFromSyncedHistory(fileName)
+
+            // Ses dosyasını yerelden sil
+            val audioFile = java.io.File(localFile.parent, "$nameWithoutExt.m4a")
+            if (audioFile.exists()) audioFile.delete()
+
+            // 2. UI Güncelle (Drive'ı bekleme!)
+            withContext(Dispatchers.Main) {
+                loadContent()
+            }
+
+            // 3. Drive Silme (Arka Planda)
+            if (isDriveMode && driveServiceHelper != null && rootDriveId != null) {
+                try {
+                    val targetFolderId = getTargetDriveFolder(parentName)
+
+                    // Notu sil
+                    val driveFileId = driveServiceHelper?.findFileId(targetFolderId, fileName)
+                    if (driveFileId != null) driveServiceHelper?.deleteFile(driveFileId)
+
+                    // Sesi sil
+                    val audioName = "$nameWithoutExt.m4a"
+                    val driveAudioId = driveServiceHelper?.findFileId(targetFolderId, audioName)
+                    if (driveAudioId != null) driveServiceHelper?.deleteFile(driveAudioId)
+
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    // Bağlantı hatası olursa (UnknownHostException) sadece loga yazar, uygulama donmaz.
+                }
+            }
         }
     }
 
     private fun saveNote(title: String, content: String, originalId: String?, colorHex: String?) {
         lifecycleScope.launch(Dispatchers.IO) {
-            if (isDriveMode) {
-                if (originalId != null) {
-                    driveServiceHelper?.updateFile(originalId, title, content)
-                    if (colorHex != null) colorStorage.saveColor(originalId, colorHex)
-                } else {
-                    val newId = driveServiceHelper?.createNote(currentDriveId!!, title, content)
-                    if (newId != null && colorHex != null) colorStorage.saveColor(newId, colorHex)
-                }
-            } else {
-                if (originalId != null) {
-                    // --- SES DOSYASI SENKRONİZASYONU ---
-                    // Eğer başlık değiştiyse, bağlı olan ses dosyasını da taşı ve içeriği güncelle
-                    var finalContent = content
-                    val oldFile = File(originalId)
+
+            // --- 1. DOSYA YOLUNU HESAPLA ---
+            val targetLocalDir = if (originalId != null) java.io.File(originalId).parentFile else currentLocalDir
+
+            // --- [KRİTİK DÜZELTME] İSMİ TEMİZLE ---
+            // 1. Önce ".md" uzantısı varsa kaldırıp ham ismi al
+            val rawName = title.removeSuffix(".md")
+            // 2. Yasaklı karakterleri temizle (?, :, / vb.)
+            val safeName = getSafeFileName(rawName)
+            // 3. Uzantıyı geri ekle (Eğer boş kaldıysa Untitled yap)
+            val finalFileName = if (safeName.isNotEmpty()) "$safeName.md" else "Untitled.md"
+
+            val finalFile = java.io.File(targetLocalDir, finalFileName)
+
+            // --- 2. RENK KAYDI ---
+            // Dosya henüz oluşmasa bile rengi path üzerine rezerve ediyoruz.
+            if (colorHex != null) {
+                colorStorage.saveColor(finalFile.absolutePath, colorHex)
+            }
+
+            titleStorage.saveTitle(finalFile.absolutePath, title.removeSuffix(".md"))
+
+            // --- 3. DEĞİŞİKLİK KONTROLÜ (Zıplamayı Önler) ---
+            if (originalId != null) {
+                val oldFile = java.io.File(originalId)
+                if (oldFile.exists()) {
+                    val oldContent = oldFile.readText()
+                    // Eski başlığı da uzantısız alıp karşılaştıralım
                     val oldTitle = oldFile.nameWithoutExtension
-                    val cleanNewTitle = title.trim()
 
-                    if (oldTitle != cleanNewTitle) {
-                        val parentDir = oldFile.parentFile
-                        val oldAudio = File(parentDir, "$oldTitle.m4a")
-
-                        if (oldAudio.exists()) {
-                            val newAudio = File(parentDir, "$cleanNewTitle.m4a")
-                            // Ses dosyasını yeniden adlandır
-                            if (oldAudio.renameTo(newAudio)) {
-                                // Notun içindeki referans metnini güncelle
-                                finalContent = finalContent.replace(
-                                    "Audio Note: ${oldAudio.name}",
-                                    "Audio Note: ${newAudio.name}"
-                                )
-                            }
-                        }
+                    // Eğer başlık (temizlenmiş haliyle) ve içerik BİREBİR AYNIYSA işlem yapma
+                    if (oldContent == content && oldTitle == safeName) {
+                        withContext(Dispatchers.Main) { loadContent() }
+                        return@launch
                     }
-                    // -----------------------------------
-
-                    localServiceHelper.updateNote(originalId, title, finalContent)
-                    if (colorHex != null) colorStorage.saveColor(originalId, colorHex)
-                } else {
-                    localServiceHelper.saveNote(currentLocalDir!!, title, content)
-                    val safeTitle = if (title.endsWith(".md")) title else "$title.md"
-                    val newPath = File(currentLocalDir, safeTitle).absolutePath
-                    if (colorHex != null) colorStorage.saveColor(newPath, colorHex)
                 }
             }
+
+            // --- 4. YERELE KAYDET ---
+            // Helper'a TEMİZLENMİŞ İSMİ (safeName) gönderiyoruz
+            if (originalId != null) {
+                // Güncelleme
+                localServiceHelper.updateNote(originalId, safeName, content)
+            } else {
+                // Yeni Kayıt
+                localServiceHelper.saveNote(currentLocalDir!!, safeName, content)
+            }
+
+            // --- 5. UI GÜNCELLE ---
             withContext(Dispatchers.Main) { loadContent() }
+
+            // --- 6. DRIVE SENKRONİZASYONU (Arka Plan) ---
+            if (isDriveMode && driveServiceHelper != null && rootDriveId != null) {
+                try {
+                    // A. Hedef Klasörü Belirle
+                    val targetFolderName = targetLocalDir?.name ?: "HeyNotes"
+                    val targetDriveFolderId = getTargetDriveFolder(targetFolderName)
+
+                    // B. Metin Dosyasını (.md) Yükle/Güncelle
+                    // finalFileName zaten yukarıda temizlenmişti
+                    val existingFileId = driveServiceHelper?.findFileId(targetDriveFolderId, finalFileName)
+
+                    if (existingFileId != null) {
+                        driveServiceHelper?.updateFile(existingFileId, finalFileName, content)
+                    } else {
+                        driveServiceHelper?.createNote(targetDriveFolderId, finalFileName, content)
+                    }
+
+                    // C. Ses Dosyasını (.m4a) Kontrol Et ve Yükle
+                    val audioFileName = finalFileName.replace(".md", ".m4a")
+                    val localAudioFile = java.io.File(targetLocalDir, audioFileName)
+
+                    if (localAudioFile.exists()) {
+                        val existingAudioId = driveServiceHelper?.findFileId(targetDriveFolderId, audioFileName)
+                        // Drive'da yoksa yükle
+                        if (existingAudioId == null) {
+                            driveServiceHelper?.uploadFile(targetDriveFolderId, localAudioFile, "audio/mp4")
+                        }
+                    }
+
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
         }
     }
+
+
+
     private fun setupBackNavigation() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+
+                // 1. Arama Modundaysak -> Aramayı Kapat
+                if (isSearching) {
+                    exitSearchMode()
+                    return
+                }
+
+                // 2. Seçim Modundaysak -> Çık
+                if (isSelectionMode) {
+                    // ... (eski kodun aynısı)
+                    isSelectionMode = false
+                    currentNotes.forEach { it.isSelected = false }
+                    notesAdapter.notifyDataSetChanged()
+                    updateSelectionModeUI()
+                    return
+                }
+
+                // 1. Seçim Modundaysak Çık
                 if (isSelectionMode) {
                     isSelectionMode = false
                     currentNotes.forEach { it.isSelected = false }
@@ -1006,22 +1393,34 @@ class MainActivity : AppCompatActivity() {
                     updateSelectionModeUI()
                     return
                 }
-                if (isDriveMode) {
-                    if (driveBreadcrumbs.size > 1) {
-                        currentDriveId = rootDriveId
-                        driveBreadcrumbs.clear(); driveBreadcrumbs.add("Main")
-                        loadContent()
-                    } else { finish() }
-                } else {
-                    if (currentLocalDir != null && currentLocalDir!!.name != "HeyNotes") {
+
+                // 2. Navigasyon Yönetimi (DÜZELTİLDİ)
+                // Drive modu olsun olmasın, referansımız artık yerel klasör (currentLocalDir)
+
+                val rootPath = localServiceHelper.getRootFolder().absolutePath
+                val currentPath = currentLocalDir?.absolutePath ?: rootPath
+
+                if (currentPath != rootPath) {
+                    // Ana dizinde değilsek bir yukarı çık
+                    currentLocalDir = currentLocalDir?.parentFile
+
+                    // Eğer yukarı çıkarken "files" gibi sistem klasörlerine taşarsa engelle
+                    if (currentLocalDir == null || currentLocalDir!!.name == "files" || currentLocalDir!!.name == "0") {
                         currentLocalDir = localServiceHelper.getRootFolder()
-                        loadContent()
-                    } else { finish() }
+                    }
+
+                    if (isDriveMode && driveBreadcrumbs.isNotEmpty()) {
+                        driveBreadcrumbs.removeAt(driveBreadcrumbs.lastIndex)
+                    }
+
+                    loadContent()
+                } else {
+                    // Ana dizindeysek uygulamadan çık veya arka plana at
+                    finish()
                 }
             }
         })
     }
-
 
 
 
@@ -1043,88 +1442,48 @@ class MainActivity : AppCompatActivity() {
     // --- KLASÖR SEÇİMİ DIALOG (GÜNCELLENDİ: HEPSİ BOLD + SEÇİLİ EFEKTİ) ---
 // --- KLASÖR SEÇİMİ DIALOG (GÜNCELLENDİ: ÖZEL İKONLAR) ---
     private fun showFolderSelectionDialog() {
+        val selectedNotes = currentNotes.filter { it.isSelected }
+        if (selectedNotes.isEmpty()) return
+
+        // --- KLASÖR LİSTESİ HAZIRLIĞI (AYNI KALIYOR) ---
+        val availableFolders = mutableListOf<NoteItem>()
+        availableFolders.add(NoteItem("Main", true, "ROOT"))
+
+        val rootFolders = if (isDriveMode) {
+            currentFolders.filter { it.id != "ROOT" && it.id != "PRIVATE_ROOT" && !it.name.contains("Voice Note") }
+        } else {
+            currentFolders.filter { it.id != "ROOT" && it.isFolder }
+        }
+
+        val finalFolderList = mutableListOf<NoteItem>()
+        finalFolderList.addAll(availableFolders)
+        finalFolderList.addAll(rootFolders.filter { folder ->
+            selectedNotes.none { note ->
+                val noteFile = java.io.File(note.id)
+                noteFile.parentFile?.name == folder.name
+            }
+        })
+
+        // --- UI KISMI ---
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_folder_selection, null)
         val recyclerView = dialogView.findViewById<RecyclerView>(R.id.rvFolderList)
+        val tvTitle = dialogView.findViewById<TextView>(R.id.tvTitle)
 
-        val dialog = AlertDialog.Builder(this)
-            .setView(dialogView)
-            .create()
+        tvTitle.text = "Move ${selectedNotes.size} items to..."
 
+        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
 
         recyclerView.layoutManager = LinearLayoutManager(this)
-        recyclerView.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_move_folder, parent, false)
-                return object : RecyclerView.ViewHolder(view) {}
-            }
 
-            override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-                val folder = currentFolders[position]
-                val tvName = holder.itemView.findViewById<TextView>(R.id.tvFolderName)
-                val ivIcon = holder.itemView.findViewById<ImageView>(R.id.ivFolderIcon)
-                val context = holder.itemView.context
-
-                tvName.text = folder.name
-
-                // --- 1. İKON SEÇİMİ (YENİ KISIM) ---
-                val iconRes = when {
-                    folder.id == "PRIVATE_ROOT" -> R.drawable.ic_lock_icon
-                    folder.name.contains("Voice Note") -> R.drawable.ic_voice_icon
-                    folder.id == "ROOT" -> R.drawable.ic_home_icon
-                    else -> R.drawable.ic_folder_icon // Diğerleri için Klasör ikonu
-                }
-                ivIcon.setImageResource(iconRes)
-                // -----------------------------------
-
-                // 2. FONT: HEPSİ HER ZAMAN BOLD OLSUN
-                tvName.alpha = 1f
-                try {
-                    tvName.typeface = ResourcesCompat.getFont(context, R.font.productsans_bold)
-                } catch (e: Exception) {
-                    tvName.setTypeface(null, Typeface.BOLD)
-                }
-
-                // 3. SEÇİLİ OLANIN ARKASINA "PILL" (HAP) EFEKTİ
-                if (folder.isActive) {
-                    val drawable = android.graphics.drawable.GradientDrawable()
-                    drawable.shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                    drawable.cornerRadius = 100f
-
-                    val baseColor = tvName.currentTextColor
-                    val pillColor = androidx.core.graphics.ColorUtils.setAlphaComponent(baseColor, 40)
-                    drawable.setColor(pillColor)
-
-                    holder.itemView.background = drawable
-                } else {
-                    holder.itemView.background = null
-                }
-
-                // İkon Rengi
-                if (folder.color != null) {
-                    ivIcon.setColorFilter(folder.color!!)
-                    ivIcon.alpha = 1f
-                } else {
-                    ivIcon.setColorFilter(Color.GRAY)
-                    ivIcon.alpha = 0.7f
-                }
-
-                holder.itemView.setOnClickListener {
-                    dialog.dismiss()
-                    handleNavigation(folder)
-                }
-
-                holder.itemView.setOnLongClickListener {
-                    // Root ve Voice Note klasörlerine dokunulmasın
-                    if (folder.id != "ROOT" && !folder.name.contains("Voice Note") && folder.id != "PRIVATE_ROOT") {
-                        dialog.dismiss()
-                        showFolderOptions(folder)
-                    }
-                    true
-                }
-            }
-            override fun getItemCount() = currentFolders.size
+        // --- DEĞİŞEN KISIM SADECE BURASI ---
+        // Artık uzun uzun adapter yazmak yok, yukarıdaki sınıfı çağırıyoruz:
+        recyclerView.adapter = FolderSelectionAdapter(finalFolderList) { targetFolder ->
+            dialog.dismiss()
+            moveSelectedItemsFast(selectedNotes, targetFolder)
         }
+        // ------------------------------------
+
         dialog.show()
     }
 
@@ -1211,45 +1570,40 @@ class MainActivity : AppCompatActivity() {
         val selectedNotes = itemsToMove ?: currentNotes.filter { it.isSelected }
         if (selectedNotes.isEmpty()) return
 
-        // --- 1. LİSTEYİ SIFIRDAN OLUŞTUR (Root'tan Tara) ---
+        // --- 1. HEDEF KLASÖRLERİ HAZIRLA ---
         val availableFolders = mutableListOf<NoteItem>()
+        availableFolders.add(NoteItem("Main", true, "ROOT")) // Ana Dizin
 
-        // A. "Main" (Ana Dizin) seçeneğini her zaman ekle
-        availableFolders.add(NoteItem("Main", true, "ROOT"))
-
-        // B. Root altındaki gerçek klasörleri tara
-        // Nerede olursan ol, her zaman en üst dizindeki klasörleri bulur.
-        if (!isDriveMode) {
-            val rootDir = localServiceHelper.getRootFolder()
-            val files = rootDir.listFiles()
-
-            if (files != null) {
-                // Sadece klasörleri filtrele, alfabetik sırala ve NoteItem'a çevir
-                val realFolders = files.filter { it.isDirectory && !it.name.contains("Voice Note") }
-                    .sortedBy { it.name }
-                    .map { NoteItem(it.name, true, it.absolutePath) }
-
-                availableFolders.addAll(realFolders)
+        // Mevcut klasörleri listeye ekle
+        val rootFolders = if (isDriveMode) {
+            currentFolders.filter {
+                it.id != "ROOT" &&
+                        it.id != "PRIVATE_ROOT"
+                // Voice Note filtresi kaldırıldı ✅
             }
         } else {
-            // Drive modundaysak ve o an root listesi elimizde yoksa,
-            // mecburen mevcut listedeki klasörleri kullanırız (Drive async çalıştığı için burada bekletemiyoruz)
-            // Ama genelde Drive modunda da currentFolders iş görür.
-            val driveFolders = currentFolders.filter { !it.isActive && it.id != "ROOT" && !it.name.contains("Voice Note") }
-            availableFolders.addAll(driveFolders)
+            val rootDir = localServiceHelper.getRootFolder()
+            rootDir.listFiles()
+                // Voice Notes filtresi kaldırıldı ✅ (Sadece Private Notes gizli kalsın)
+                ?.filter { it.isDirectory && it.name != "Private Notes" }
+                ?.map { NoteItem(it.name, true, it.absolutePath) }
+                ?: emptyList()
         }
 
-        // C. Filtreleme: Klasör kendisini kendi içine taşıyamaz
-        // (Eğer bir klasör seçip taşı diyorsan, hedef listede kendisi olmamalı)
-        val finalFolderList = availableFolders.filter { folder ->
-            val isSelf = selectedNotes.any { it.id == folder.id }
-            !isSelf
-        }.toMutableList()
+        // Kendisini kendi içine taşıyamayacağı için filtrele
+        val finalFolderList = mutableListOf<NoteItem>()
+        finalFolderList.addAll(availableFolders)
+        finalFolderList.addAll(rootFolders.filter { folder ->
+            selectedNotes.none { it.id == folder.id }
+        })
 
-        // --- DIALOG KURULUMU ---
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_move_bottom_sheet, null)
+        // --- 2. DIALOG TASARIMI ---
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_folder_selection, null)
         val recyclerView = dialogView.findViewById<RecyclerView>(R.id.rvFolderList)
-        val btnCancel = dialogView.findViewById<TextView>(R.id.btnCancel)
+        val tvTitle = dialogView.findViewById<TextView>(R.id.tvTitle)
+
+        // Başlık
+        tvTitle.text = "Move ${selectedNotes.size} items to..."
 
         val dialog = AlertDialog.Builder(this)
             .setView(dialogView)
@@ -1258,61 +1612,115 @@ class MainActivity : AppCompatActivity() {
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
 
         recyclerView.layoutManager = LinearLayoutManager(this)
-        recyclerView.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-                val view = LayoutInflater.from(parent.context).inflate(R.layout.item_move_folder, parent, false)
-                return object : RecyclerView.ViewHolder(view) {}
-            }
 
-            override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-                val folder = finalFolderList[position]
-                val tvName = holder.itemView.findViewById<TextView>(R.id.tvFolderName)
-
-                tvName.text = folder.name
-
-                holder.itemView.setOnClickListener {
-                    dialog.dismiss()
-                    performBulkMove(selectedNotes, folder)
-                }
-            }
-
-            override fun getItemCount() = finalFolderList.size
+        // --- 3. ADAPTER (İŞTE BURASI DEĞİŞTİ) ---
+        // O uzun "object : RecyclerView..." kodu gitti.
+        // Yerine renkli ve modern Adapter sınıfımızı çağırıyoruz:
+        recyclerView.adapter = FolderSelectionAdapter(finalFolderList) { targetFolder ->
+            dialog.dismiss()
+            moveSelectedItemsFast(selectedNotes, targetFolder)
         }
 
-        btnCancel.setOnClickListener { dialog.dismiss() }
         dialog.show()
     }
 
-    private fun performBulkMove(notes: List<NoteItem>, targetFolder: NoteItem) {
+    private fun moveSelectedItemsFast(items: List<NoteItem>, targetFolder: NoteItem) {
         lifecycleScope.launch(Dispatchers.IO) {
-            notes.forEach { note ->
-                try {
-                    if (isDriveMode) {
-                        val targetId = if (targetFolder.id == "ROOT") rootDriveId!! else targetFolder.id
-                        driveServiceHelper?.moveFile(note.id, targetId)
-                    } else {
-                        val sourceFile = File(note.id)
-                        val targetDir = if (targetFolder.id == "ROOT") localServiceHelper.getRootFolder() else File(targetFolder.id)
-                        var destFile = File(targetDir, sourceFile.name)
-                        var counter = 1
-                        while (destFile.exists()) {
-                            destFile = File(targetDir, "${sourceFile.nameWithoutExtension} ($counter).md")
-                            counter++
-                        }
-                        sourceFile.copyTo(destFile, overwrite = true)
-                        val audioSource = File(sourceFile.parent, "${sourceFile.nameWithoutExtension}.m4a")
-                        if (audioSource.exists()) {
-                            val audioDest = File(targetDir, destFile.nameWithoutExtension + ".m4a")
-                            audioSource.copyTo(audioDest, overwrite = true)
-                            audioSource.delete()
-                        }
-                        sourceFile.delete()
+            // Drive işlemi için gerekli bilgileri (Eski yer, Yeni yer, İsim) hafızaya alıyoruz
+            val itemsToSync = mutableListOf<Triple<String, String, String>>()
+            var movedCount = 0
+
+            // 1. Hedef Klasörü Belirle (Yerel)
+            val rootDir = localServiceHelper.getRootFolder()
+            val targetDirName = targetFolder.name
+            val targetDirFile = if (targetFolder.id == "ROOT" || targetFolder.name == "Main") rootDir else java.io.File(rootDir, targetDirName)
+
+            if (!targetDirFile.exists()) targetDirFile.mkdirs()
+
+            // --- A. YEREL TAŞIMA (ANINDA) ---
+            items.forEach { item ->
+                val sourceFile = java.io.File(item.id)
+                val fileName = sourceFile.name
+                val oldParentName = sourceFile.parentFile?.name ?: "HeyNotes"
+
+                // Hedef ile kaynak aynıysa atla
+                if (sourceFile.parentFile?.absolutePath == targetDirFile.absolutePath) return@forEach
+
+                val destFile = java.io.File(targetDirFile, fileName)
+
+                // Dosya ismini çakışmaya karşı ayarla (Örn: Not.md -> Not (1).md)
+                var finalDestFile = destFile
+                var counter = 1
+                while (finalDestFile.exists()) {
+                    val nameNoExt = fileName.substringBeforeLast(".")
+                    val ext = fileName.substringAfterLast(".", "")
+                    val newName = "$nameNoExt ($counter).$ext"
+                    finalDestFile = java.io.File(targetDirFile, newName)
+                    counter++
+                }
+
+                // --- [YENİ] 1. TAŞIMADAN ÖNCE RENGİ AL ---
+                val oldColorInt = colorStorage.getColor(sourceFile.absolutePath)
+
+                if (sourceFile.renameTo(finalDestFile)) {
+                    movedCount++
+
+                    // --- [YENİ] 2. RENGİ YENİ ADRESE KAYDET ---
+                    if (oldColorInt != null) {
+                        val hexColor = String.format("#%06X", (0xFFFFFF and oldColorInt))
+                        colorStorage.saveColor(finalDestFile.absolutePath, hexColor)
                     }
-                } catch (e: Exception) { }
+
+                    // Listeye ekle (Drive için)
+                    itemsToSync.add(Triple(fileName, oldParentName, targetDirName))
+
+                    // Varsa Ses Dosyasını da Taşı
+                    if (!item.isFolder) {
+                        val audioName = sourceFile.nameWithoutExtension + ".m4a"
+                        val sourceAudio = java.io.File(sourceFile.parent, audioName)
+                        if (sourceAudio.exists()) {
+                            val destAudioName = finalDestFile.nameWithoutExtension + ".m4a"
+                            val destAudio = java.io.File(targetDirFile, destAudioName)
+                            sourceAudio.renameTo(destAudio)
+                        }
+                    }
+                }
             }
+
+            // --- B. EKRANI GÜNCELLE (KULLANICIYI BEKLETME) ---
             withContext(Dispatchers.Main) {
                 isSelectionMode = false
-                loadContent()
+                updateSelectionModeUI()
+                loadContent() // Liste anında güncellenir
+                if (movedCount > 0) {
+                    Toast.makeText(this@MainActivity, "Moved $movedCount items", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            // --- C. DRIVE İŞLEMİ (ARKA PLAN - SESSİZ) ---
+            if (isDriveMode && driveServiceHelper != null && rootDriveId != null) {
+                itemsToSync.forEach { (fileName, oldParentName, newParentName) ->
+                    try {
+                        val oldParentId = getTargetDriveFolder(oldParentName)
+                        val newParentId = getTargetDriveFolder(newParentName)
+
+                        val fileId = driveServiceHelper?.findFileId(oldParentId, fileName)
+
+                        if (fileId != null) {
+                            driveServiceHelper?.moveFile(fileId, newParentId)
+                        }
+
+                        if (fileName.endsWith(".md")) {
+                            val audioName = fileName.replace(".md", ".m4a")
+                            val audioId = driveServiceHelper?.findFileId(oldParentId, audioName)
+                            if (audioId != null) {
+                                driveServiceHelper?.moveFile(audioId, newParentId)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
             }
         }
     }
@@ -1325,194 +1733,182 @@ class MainActivity : AppCompatActivity() {
 
     // handleNavigation'ı bul ve başlığını şu şekilde değiştir:
     private fun handleNavigation(item: NoteItem, forceUnlock: Boolean = false) {
-        // 1. ROOT
+        // 1. ROOT (Ana Sayfaya Dönüş)
         if (item.id == "ROOT") {
-            if (isDriveMode) { currentDriveId = rootDriveId; driveBreadcrumbs.clear(); driveBreadcrumbs.add("Main") }
-            else { currentLocalDir = localServiceHelper.getRootFolder() }
-            loadContent(); return
+            currentLocalDir = localServiceHelper.getRootFolder()
+
+            // Drive modundaysak breadcrumb'ı (üstteki yol haritasını) sıfırla
+            if (isDriveMode) {
+                driveBreadcrumbs.clear()
+                driveBreadcrumbs.add("Main")
+            }
+
+            loadContent()
+            return
         }
 
         if (item.isActive) return
 
-        // --- 2. PRIVATE FOLDER KONTROLÜ (YENİ) ---
+        // 2. PRIVATE FOLDER KONTROLÜ
         if (item.id == "PRIVATE_ROOT") {
             val masterPin = getMasterPin()
-
             if (masterPin == null) {
-                // Durum A: Hiç PIN yok -> "Yeni PIN Oluştur" penceresi aç
-                showSetMasterPinDialog {
-                    // PIN başarıyla oluştu, şimdi içeri al
-                    openPrivateFolder()
-                }
+                showSetMasterPinDialog { openPrivateFolder() }
             } else {
-                // Durum B: PIN var -> "PIN Gir" penceresi aç
-                showUnlockDialog {
-                    // PIN doğru girildi, şimdi içeri al
-                    openPrivateFolder()
-                }
+                showUnlockDialog { openPrivateFolder() }
             }
-            return // İşlemi burada kes, dialog sonucunu bekle
-        }
-
-        // 3. ESKİ KİLİTLİ KLASÖR KONTROLÜ (Varsa)
-        if (item.isLocked && !forceUnlock) {
-            showUnlockDialog(item) // NoteItem alan eski versiyon
             return
         }
 
-        // 4. NORMAL YÖNLENDİRME
+        // 3. KİLİTLİ KLASÖR KONTROLÜ (Eski sistem)
+        if (item.isLocked && !forceUnlock) {
+            // NoteItem parametresi alan showUnlockDialog versiyonunuz varsa: showUnlockDialog(item)
+            // Yoksa genel olanı kullanıp başarı durumunda handleNavigation(item, true) çağırabilirsiniz.
+            // Şimdilik basitçe kilitliyse açtırmıyoruz (pin dialog kodunuzun yapısına göre)
+            Toast.makeText(this, "Locked Folder", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 4. NORMAL YÖNLENDİRME (DÜZELTİLDİ)
+        // Hata buradaydı: isDriveMode olsa bile artık yerel yolu (path) takip etmeliyiz.
+        // Çünkü listeyi yerelden oluşturuyoruz.
+
+        currentLocalDir = java.io.File(item.id)
+
         if (isDriveMode) {
             driveBreadcrumbs.add(item.name)
-            currentDriveId = item.id
-        } else {
-            currentLocalDir = java.io.File(item.id)
         }
+
         loadContent()
     }
 
     private fun loadContent() {
         isSelectionMode = false
         updateSelectionModeUI()
-        val isRoot = (!isDriveMode && currentLocalDir?.name == "HeyNotes") || (isDriveMode && currentDriveId == rootDriveId)
 
-        // --- Header Mantığı ---
-        var currentFolderColor = Color.BLACK
+        // --- 1. RENK TANIMLAMALARI ---
+        // Varsayılan rengi button_color yapıyoruz (Dark/Light mod uyumlu olsun diye)
+        val defaultButtonColor = getColor(R.color.button_color)
+
+        var currentFolderColor = defaultButtonColor
         var currentFolderName = "Main"
+        val isRoot = currentLocalDir?.name == "HeyNotes" // Ana dizinde miyiz?
 
         if (!isRoot) {
-            val rawName = if (isDriveMode) driveBreadcrumbs.last() else currentLocalDir?.name ?: "Folder"
-            currentFolderName = rawName.replace("!!", "").trim()
-            val currentId = if (isDriveMode) currentDriveId else currentLocalDir?.absolutePath
+            currentFolderName = currentLocalDir?.name ?: "Folder"
+            val isPrivate = !isDriveMode && currentLocalDir?.absolutePath?.contains("Private Notes") == true
 
-            // --- GİZLİ KLASÖR KONTROLÜ ---
-            val privateDir = java.io.File(getFilesDir(), "Private Notes")
-            val isPrivate = !isDriveMode && currentLocalDir?.absolutePath == privateDir.absolutePath
-            // -----------------------------
-
-            if (currentId != null) {
-                // Öncelik sırasına göre renk belirleme
-                if (currentFolderName.contains("Voice Note")) {
-                    currentFolderColor = Color.parseColor("#FF4B4B")
-                } else if (isPrivate) {
-                    currentFolderColor = Color.BLACK
-                } else {
-                    currentFolderColor = colorStorage.getColor(currentId) ?: Color.parseColor("#616161")
-                }
+            currentFolderColor = if (currentFolderName.contains("Voice Note")) {
+                Color.parseColor("#FF4B4B")
+            } else if (isPrivate) {
+                // Private için de istersen button_color kullanabilirsin, şimdilik Siyah bıraktım
+                Color.BLACK
+            } else {
+                colorStorage.getColor(currentLocalDir!!.absolutePath) ?: Color.parseColor("#616161")
             }
-        } else {
-            currentFolderName = if (isDriveMode) "Google Drive" else "Main"
         }
 
         tvAppTitle.text = "Hey, $userName"
 
-        // Selamlama Mantığı (Saat dilimine göre)
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-        val greeting = when {
+        tvGreeting.text = when {
             hour < 12 -> "Good morning."
             hour < 17 -> "Good afternoon."
             hour < 21 -> "Good evening."
             else -> "Good night."
         }
-        tvGreeting.text = greeting
 
         tvSubtitle.text = currentFolderName
+
+        // --- 2. BUTON RENKLERİNİ UYGULA ---
+
+        // Folder Selector (Soldaki) -> Klasöre göre renk değiştirir
         layoutFolderSelector.backgroundTintList = android.content.res.ColorStateList.valueOf(currentFolderColor)
 
-        lifecycleScope.launch(Dispatchers.IO) {
-            // --- Veri Çekme ---
-            val allFoldersRaw: List<NoteItem> = if (isDriveMode) {
-                driveServiceHelper?.listFiles(rootDriveId ?: "")?.filter { it.mimeType.contains("folder") }?.map { NoteItem(it.name, true, it.id) } ?: emptyList()
-            } else {
-                var rootDir = currentLocalDir
-                // Root dizine kadar yukarı çıkma (Breadcrumb mantığı için)
-                while (rootDir?.parentFile != null && rootDir.parentFile.name != "0" && rootDir.parentFile.name != "files") {
-                    if (rootDir.name == "HeyNotes") break
-                    rootDir = rootDir.parentFile
-                }
-                if (rootDir != null) localServiceHelper.listItems(rootDir).filter { it.isFolder } else emptyList()
-            }
+        // Search Pill (Sağdaki) -> HER ZAMAN button_color olsun (Main ile uyumlu)
+        // (Eğer bunun da klasör rengini almasını istersen parantez içini currentFolderColor yap)
+        searchContainer.backgroundTintList = android.content.res.ColorStateList.valueOf(defaultButtonColor)
 
-            val currentItemsRaw: List<NoteItem> = if (isDriveMode) {
-                if (currentDriveId == null) emptyList() else driveServiceHelper?.listFiles(currentDriveId!!)?.map { NoteItem(it.name, it.mimeType.contains("folder"), it.id) } ?: emptyList()
-            } else {
-                if (currentLocalDir == null) emptyList() else localServiceHelper.listItems(currentLocalDir!!)
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            // 1. KLASÖR MENÜSÜ İÇİN: Her zaman ROOT klasörünü tara
+            val rootDir = localServiceHelper.getRootFolder()
+            val allRootItems = localServiceHelper.listItems(rootDir)
+            val rootFoldersRaw = allRootItems.filter { it.isFolder }
+
+            // 2. NOT LİSTESİ İÇİN: Şu anki klasörü tara
+            if (currentLocalDir == null || !currentLocalDir!!.exists()) {
+                currentLocalDir = rootDir
             }
+            val currentViewItems = localServiceHelper.listItems(currentLocalDir!!)
+            val notesInCurrentView = currentViewItems.filter { !it.isFolder }
 
             withContext(Dispatchers.Main) {
-                // --- KLASÖR LİSTESİNİ HAZIRLA ---
+                // --- KLASÖR LİSTESİNİ OLUŞTUR (Menü İçin) ---
                 val tempFolderList = mutableListOf<NoteItem>()
 
-                // 1. MAIN (Sabit)
-                tempFolderList.add(NoteItem("Main", true, "ROOT", color = Color.BLACK, isActive = isRoot))
-
-                // 2. PRIVATE FOLDER (Sabit - getFilesDir içinde)
-                val privateDir = java.io.File(getFilesDir(), "Private Notes")
-                val isPrivateActive = currentLocalDir?.absolutePath == privateDir.absolutePath
-
+                // A. Sabit Klasörler
+                // DEĞİŞİKLİK: Main klasörünün rengini de button_color yaptık
                 tempFolderList.add(NoteItem(
-                    name = "Private",
+                    name = "Main",
                     isFolder = true,
-                    id = "PRIVATE_ROOT",
-                    color = Color.BLACK,
-                    isActive = isPrivateActive,
-                    isLocked = true
+                    id = "ROOT",
+                    color = defaultButtonColor, // <-- BURASI GÜNCELLENDİ
+                    isActive = isRoot
                 ))
 
-                // 3. VOICE NOTES (Sabit - Documents/HeyNotes içinde)
-                // Klasör yolunu ana kök dizinden alıyoruz
-                val rootFolder = localServiceHelper.getRootFolder()
-                val voiceDir = java.io.File(rootFolder, "Voice Notes")
+                val privateDir = java.io.File(getFilesDir(), "Private Notes")
+                val isPrivateActive = currentLocalDir?.absolutePath == privateDir.absolutePath
+                tempFolderList.add(NoteItem("Private", true, "PRIVATE_ROOT", color = Color.BLACK, isActive = isPrivateActive, isLocked = true))
 
-                // Klasör yoksa oluştur (Böylece listede her zaman görünür)
-                if (!voiceDir.exists()) {
-                    voiceDir.mkdirs()
-                }
-
-                val isVoiceActive = currentLocalDir?.absolutePath == voiceDir.absolutePath
+                // B. Voice Notes
+                val localVoiceDir = java.io.File(rootDir, "Voice Notes")
+                if (!localVoiceDir.exists()) localVoiceDir.mkdirs()
+                val isVoiceActive = currentLocalDir?.absolutePath == localVoiceDir.absolutePath
 
                 tempFolderList.add(NoteItem(
                     name = "Voice Notes",
                     isFolder = true,
-                    id = voiceDir.absolutePath,
+                    id = localVoiceDir.absolutePath,
                     color = Color.parseColor("#FF4B4B"),
                     isActive = isVoiceActive
                 ))
 
-                // 4. DİĞER KLASÖRLER (Filtreleme)
-                val processedFolders = allFoldersRaw.map { folder ->
-                    val currentPath = if (isDriveMode) currentDriveId else currentLocalDir?.absolutePath
-                    val isThisFolderActive = !isRoot && folder.id == currentPath
+                // C. Diğer Klasörler
+                val processedFolders = rootFoldersRaw.map { folder ->
+                    val isThisFolderActive = currentLocalDir?.absolutePath == folder.id
                     val isLocked = securityStorage.isLocked(folder.id)
                     folder.copy(
                         name = folder.name.replace("!!", ""),
-                        // Renk: Voice Note ise kırmızı, diğerleri kayıtlı renk veya gri
-                        color = if (folder.name.contains("Voice Note")) Color.parseColor("#FF4B4B") else (colorStorage.getColor(folder.id) ?: Color.parseColor("#616161")),
+                        color = colorStorage.getColor(folder.id) ?: Color.parseColor("#616161"),
                         isActive = isThisFolderActive,
                         isLocked = isLocked
                     )
                 }
 
-                // Listeyi temizle: Private ve Voice Notes zaten yukarıda manuel eklendi, tekrar gelmesin
-                val otherFolders = processedFolders.filter {
+                tempFolderList.addAll(processedFolders.filter {
                     !it.name.contains("Voice Note") && it.name != "Private Notes"
-                }.sortedBy { it.name }
+                }.sortedBy { it.name })
 
-                tempFolderList.addAll(otherFolders)
+                // --- NOT LİSTESİ ---
+                // --- NOT LİSTESİ (DÜZELTİLDİ: Gerçek Başlıklar) ---
+                val notesWithColors = notesInCurrentView.map { note ->
+                    // 1. Hafızadan gerçek başlığı (Soru işaretli olanı) çek
+                    val realTitle = titleStorage.getTitle(note.id) ?: note.name
 
-                // Notları Hazırla
-                val notesWithColors = currentItemsRaw.filter { !it.isFolder }.map { note ->
-                    note.copy(name = note.name.replace("!!", ""), color = colorStorage.getColor(note.id))
+                    // 2. NoteItem'ı güncelle (name artık gerçek başlık olacak)
+                    note.copy(
+                        name = realTitle,
+                        color = colorStorage.getColor(note.id)
+                    )
                 }
 
-                // Listeleri Güncelle
                 currentFolders = tempFolderList
                 currentNotes = notesWithColors.toMutableList()
-
                 notesAdapter.submitList(currentNotes)
             }
         }
     }
-
 
     private fun showSettingsMenu(anchorView: View) {
         val inflater = LayoutInflater.from(this)
@@ -1686,5 +2082,512 @@ class MainActivity : AppCompatActivity() {
         }
         btnCancel.setOnClickListener { dialog.dismiss() }
         dialog.show()
+    }
+
+    private fun checkAndSyncBackground() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            uploadLocalNotes()
+            downloadMissingFilesFromDrive()
+        }
+    }
+
+    private suspend fun uploadLocalNotes() {
+        if (!isDriveMode || driveServiceHelper == null || rootDriveId == null) return
+
+        withContext(Dispatchers.IO) {
+            try {
+                // 1. Drive'daki Tüm Dosyaların Listesini Çek
+                val driveFilesList = driveServiceHelper?.listFiles(rootDriveId!!) ?: emptyList()
+                val driveFileNames = driveFilesList.map { it.second }.toSet()
+
+                val rootLocalDir = localServiceHelper.getRootFolder()
+                val localFiles = rootLocalDir.listFiles()?.filter {
+                    it.isFile && (it.name.endsWith(".md") || it.name.endsWith(".m4a"))
+                } ?: emptyList()
+
+                // Hafızayı çağır
+                val syncedHistory = getSyncedFiles()
+
+                localFiles.forEach { localFile ->
+                    val fileName = localFile.name
+
+                    if (driveFileNames.contains(fileName)) {
+                        // --- DURUM A: Hem Yerde Var, Hem Drive'da Var ---
+                        if (fileName.endsWith(".md")) {
+                            val driveId = driveFilesList.find { it.second == fileName }!!.first
+                            val localContent = localFile.readText()
+                            driveServiceHelper?.updateFile(driveId, fileName, localContent)
+                        }
+                        addToSyncedHistory(fileName)
+                    }
+                    else {
+                        // --- DURUM B: Yerde Var, Ama Drive'da YOK ---
+                        if (syncedHistory.contains(fileName)) {
+                            // Zombi Notu Öldür (Drive'dan silinmiş, bizden de silinsin)
+                            localFile.delete()
+                            removeFromSyncedHistory(fileName)
+
+                            if (fileName.endsWith(".md")) {
+                                val audioName = fileName.replace(".md", ".m4a")
+                                val audioFile = java.io.File(localFile.parent, audioName)
+                                if (audioFile.exists()) {
+                                    audioFile.delete()
+                                    removeFromSyncedHistory(audioName)
+                                }
+                            }
+                            android.util.Log.d("HeyNotesSync", "Remote delete detected for: $fileName")
+                        }
+                        else {
+                            // Yeni Not -> Yükle
+                            if (fileName.endsWith(".md")) {
+                                val content = localFile.readText()
+                                driveServiceHelper?.createNote(rootDriveId!!, fileName, content)
+                            } else if (fileName.endsWith(".m4a")) {
+                                driveServiceHelper?.uploadFile(rootDriveId!!, localFile, "audio/mp4")
+                            }
+                            addToSyncedHistory(fileName)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    // Drive'da doğru klasörü bulan veya oluşturan akıllı fonksiyon
+    private suspend fun getTargetDriveFolder(localDirName: String): String {
+        // 1. Eğer ana dizindeysek Root ID dön
+        if (localDirName == "HeyNotes" || localDirName == "files" || localDirName == "0") {
+            return rootDriveId!!
+        }
+
+        // 2. Alt klasördeysek Drive'da ara
+        val foundId = driveServiceHelper?.findFileId(rootDriveId!!, localDirName)
+
+        // 3. Varsa ID'yi dön, yoksa oluşturup dön
+        return foundId ?: driveServiceHelper?.createFolder(rootDriveId!!, localDirName) ?: rootDriveId!!
+    }
+
+    private fun showMoveSelectionDialog() {
+        val selectedItems = currentNotes.filter { it.isSelected } + currentFolders.filter { it.isSelected }
+        if (selectedItems.isEmpty()) return
+
+        // Gidilebilecek Klasörleri Listele
+        val rootDir = localServiceHelper.getRootFolder()
+        val allDirs = rootDir.listFiles { file -> file.isDirectory && file.name != "Private Notes" }?.toList() ?: emptyList()
+
+        // Klasör isimlerini al (En başa "Main" ekle)
+        val folderNames = mutableListOf("Main")
+        allDirs.forEach { folderNames.add(it.name) }
+
+        AlertDialog.Builder(this)
+            .setTitle("Move to...")
+            .setItems(folderNames.toTypedArray()) { _, which ->
+                val targetFolderName = folderNames[which]
+                moveSelectedItems(selectedItems, targetFolderName)
+            }
+            .show()
+    }
+
+    private fun moveSelectedItems(items: List<NoteItem>, targetFolderName: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            // 1. Hedef Klasörü Hazırla
+            val rootDir = localServiceHelper.getRootFolder()
+            val targetDir = if (targetFolderName == "Main") rootDir else java.io.File(rootDir, targetFolderName)
+            if (!targetDir.exists()) targetDir.mkdirs()
+
+            val itemsToSyncWithDrive = mutableListOf<Triple<String, String, String>>()
+            var movedCount = 0
+
+            // --- A. YEREL TAŞIMA (HIZLI) ---
+            items.forEach { item ->
+                val sourceFile = java.io.File(item.id)
+                val fileName = sourceFile.name
+                val oldParentName = sourceFile.parentFile?.name ?: "HeyNotes"
+
+                // Kendi içine veya aynı yere taşımayı engelle
+                if (sourceFile.parentFile?.absolutePath == targetDir.absolutePath) return@forEach
+                if (item.isFolder && item.name == targetFolderName) return@forEach
+
+                val destFile = java.io.File(targetDir, fileName)
+
+                // --- [YENİ] 1. TAŞIMADAN ÖNCE RENGİ AL ---
+                val oldColorInt = colorStorage.getColor(sourceFile.absolutePath)
+
+                if (sourceFile.renameTo(destFile)) {
+                    movedCount++
+
+                    // --- [YENİ] 2. RENGİ YENİ ADRESE KAYDET ---
+                    if (oldColorInt != null) {
+                        val hexColor = String.format("#%06X", (0xFFFFFF and oldColorInt))
+                        colorStorage.saveColor(destFile.absolutePath, hexColor)
+                    }
+
+                    // Bilgileri kaydet (Drive için lazım olacak)
+                    itemsToSyncWithDrive.add(Triple(fileName, oldParentName, targetFolderName))
+
+                    // Ses Dosyasını da Taşı (.m4a)
+                    if (!item.isFolder) {
+                        val audioName = sourceFile.nameWithoutExtension + ".m4a"
+                        val sourceAudio = java.io.File(sourceFile.parent, audioName)
+                        if (sourceAudio.exists()) {
+                            val destAudio = java.io.File(targetDir, audioName)
+                            sourceAudio.renameTo(destAudio)
+                        }
+                    }
+                }
+            }
+
+            // --- B. UI GÜNCELLEME (ANINDA) ---
+            withContext(Dispatchers.Main) {
+                isSelectionMode = false
+                updateSelectionModeUI()
+                loadContent()
+
+                if (movedCount > 0) {
+                    Toast.makeText(this@MainActivity, "Moved $movedCount items", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            // --- C. DRIVE TAŞIMA (ARKA PLAN - SESSİZ) ---
+            if (isDriveMode && driveServiceHelper != null && rootDriveId != null) {
+                itemsToSyncWithDrive.forEach { (fileName, oldParentName, newParentName) ->
+                    try {
+                        val oldParentId = getTargetDriveFolder(oldParentName)
+                        val newParentId = getTargetDriveFolder(newParentName)
+
+                        val fileId = driveServiceHelper?.findFileId(oldParentId, fileName)
+
+                        if (fileId != null) {
+                            driveServiceHelper?.moveFile(fileId, newParentId)
+                        }
+
+                        if (fileName.endsWith(".md")) {
+                            val audioName = fileName.replace(".md", ".m4a")
+                            val audioId = driveServiceHelper?.findFileId(oldParentId, audioName)
+                            if (audioId != null) {
+                                driveServiceHelper?.moveFile(audioId, newParentId)
+                            }
+                        }
+
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        }
+    }
+    // --- SENKRONİZASYON HAFIZASI (Zombi Notları Engellemek İçin) ---
+    // Bu fonksiyonlar sınıfın doğrudan içinde olmalı, başka fonksiyonun içinde değil!
+
+    private fun getSyncedFiles(): MutableSet<String> {
+        val prefs = getSharedPreferences("sync_history", android.content.Context.MODE_PRIVATE)
+        return prefs.getStringSet("files", mutableSetOf())?.toMutableSet() ?: mutableSetOf()
+    }
+
+    private fun addToSyncedHistory(fileName: String) {
+        val history = getSyncedFiles()
+        history.add(fileName)
+        getSharedPreferences("sync_history", android.content.Context.MODE_PRIVATE)
+            .edit().putStringSet("files", history).apply()
+    }
+
+    private fun removeFromSyncedHistory(fileName: String) {
+        val history = getSyncedFiles()
+        history.remove(fileName)
+        getSharedPreferences("sync_history", android.content.Context.MODE_PRIVATE)
+            .edit().putStringSet("files", history).apply()
+    }
+
+    private suspend fun downloadMissingFilesFromDrive() {
+        if (!isDriveMode || driveServiceHelper == null || rootDriveId == null) return
+
+        withContext(Dispatchers.IO) {
+            try {
+                val driveFiles = driveServiceHelper?.listFiles(rootDriveId!!) ?: emptyList()
+                val rootLocalDir = localServiceHelper.getRootFolder()
+
+                driveFiles.forEach { (driveId, driveName) ->
+                    val localFile = java.io.File(rootLocalDir, driveName)
+
+                    if (!localFile.exists()) {
+                        // --- İNDİRME İŞLEMİ ---
+                        var isDownloaded = false
+
+                        if (driveName.endsWith(".md")) {
+                            val content = driveServiceHelper?.readFileContent(driveId)
+                            if (content != null) {
+                                localServiceHelper.saveNote(rootLocalDir, driveName.removeSuffix(".md"), content)
+                                isDownloaded = true
+                            }
+                        }
+                        else if (driveName.endsWith(".m4a")) {
+                            driveServiceHelper?.downloadFile(driveId, localFile)
+                            isDownloaded = true
+                        }
+
+                        // İndirme başarılıysa HAFIZAYA KAYDET
+                        if (isDownloaded) {
+                            addToSyncedHistory(driveName)
+                        }
+                    }
+                    else {
+                        // Zaten varsa da hafızada olduğundan emin ol
+                        addToSyncedHistory(driveName)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        withContext(Dispatchers.Main) { loadContent() }
+    }
+
+
+
+    // MainActivity'nin içinde, en alta (inner class olarak) ekleyin.
+    inner class FolderSelectionAdapter(
+        private val folders: List<NoteItem>,
+        private val onFolderSelected: (NoteItem) -> Unit
+    ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val view = LayoutInflater.from(parent.context).inflate(R.layout.item_move_folder, parent, false)
+            return object : RecyclerView.ViewHolder(view) {}
+        }
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            val folder = folders[position]
+
+            val cardView = holder.itemView as com.google.android.material.card.MaterialCardView
+            val tvName = holder.itemView.findViewById<TextView>(R.id.tvFolderName)
+            val ivIcon = holder.itemView.findViewById<ImageView>(R.id.ivFolderIcon)
+
+            tvName.text = folder.name
+
+            // --- RENK MANTIĞI ---
+            // Klasörün rengini ana listeden (currentFolders) bul
+            // folder nesnesi geçici kopya olabilir, bu yüzden ID ile ana listeden gerçeğini ve rengini çekiyoruz.
+            val originalFolder = currentFolders.find { it.id == folder.id || (folder.id == "ROOT" && it.id == "ROOT") }
+            val folderColor = originalFolder?.color ?: Color.parseColor("#F5F5F5")
+
+            // 1. Arka Plan: Rengin %20 opak hali (Pastel)
+            val pastelColor = androidx.core.graphics.ColorUtils.setAlphaComponent(folderColor, 50)
+            cardView.setCardBackgroundColor(pastelColor)
+
+            // 2. İkon Rengi: Orijinal renk
+            ivIcon.setColorFilter(folderColor)
+
+            // 3. Yazı Rengi: Koyu
+            tvName.setTextColor(getColor(R.color.text_color))
+
+            // İkon Seçimi
+            val iconRes = when {
+                folder.id == "PRIVATE_ROOT" -> R.drawable.ic_lock_icon
+                folder.name.contains("Voice Note") -> R.drawable.ic_voice_icon
+                folder.id == "ROOT" -> R.drawable.ic_home_icon
+                else -> R.drawable.ic_folder_icon
+            }
+            ivIcon.setImageResource(iconRes)
+
+            // Tıklama
+            holder.itemView.setOnClickListener {
+                onFolderSelected(folder)
+            }
+        }
+
+        override fun getItemCount() = folders.size
+    }
+
+
+    // Sadece Klasör Değiştirmek (Navigasyon) İçin Kullanılacak Fonksiyon
+    private fun showNavigationDialog() {
+        // 1. Listeyi Al (loadContent içinde hazırladığımız currentFolders listesi tam da bu iş için)
+        // Main, Private, Voice Notes ve diğerleri zaten burada var.
+        val navigationList = ArrayList(currentFolders)
+
+        // 2. Dialog Tasarımı
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_folder_selection, null)
+        val recyclerView = dialogView.findViewById<RecyclerView>(R.id.rvFolderList)
+        val tvTitle = dialogView.findViewById<TextView>(R.id.tvTitle)
+
+        tvTitle.text = "Go to..." // Başlığı "Go to..." yapıyoruz
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        recyclerView.layoutManager = LinearLayoutManager(this)
+
+        // 3. Adapter (Renkli Adapter'ımızı burada da kullanıyoruz)
+        recyclerView.adapter = FolderSelectionAdapter(navigationList) { targetFolder ->
+            dialog.dismiss()
+            // Tıklanınca Taşıma (Move) DEĞİL, Gitme (Navigate) işlemi yap:
+            handleNavigation(targetFolder)
+        }
+
+        dialog.show()
+    }
+
+
+    private fun setupSearchLogic() {
+        // 1. Pill'e (Kapsayıcıya) Tıklayınca -> Arama Modunu Aç
+        searchContainer.setOnClickListener {
+            if (!isSearching) {
+                isSearching = true
+
+                // Görünüm Değişikliği: Label GİTSİN, Input ve X GELSİN
+                tvSearchLabel.visibility = View.GONE
+                etSearch.visibility = View.VISIBLE
+                ivCloseSearch.visibility = View.VISIBLE
+
+                etSearch.requestFocus()
+                // Klavyeyi aç
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                imm.showSoftInput(etSearch, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+            }
+        }
+
+        // 2. Kapat (X) Tıklayınca -> Arama Modundan Çık
+        ivCloseSearch.setOnClickListener {
+            exitSearchMode()
+        }
+
+        // 3. Yazı Yazıldıkça -> ARAMA YAP (Burası aynı)
+        etSearch.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) {}
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                val query = s.toString().trim()
+                if (query.length >= 2) {
+                    performGlobalSearch(query)
+                } else if (query.isEmpty()) {
+                    loadContent()
+                }
+            }
+        })
+    }
+
+    private fun exitSearchMode() {
+        isSearching = false
+        etSearch.setText("") // Yazıyı temizle
+
+        // Görünüm Değişikliği: Input ve X GİTSİN, Label GELSİN
+        etSearch.visibility = View.GONE
+        ivCloseSearch.visibility = View.GONE
+        tvSearchLabel.visibility = View.VISIBLE
+
+        // Klavyeyi kapat
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        imm.hideSoftInputFromWindow(etSearch.windowToken, 0)
+
+        // Listeyi normale döndür
+        loadContent()
+    }
+
+    private fun performGlobalSearch(query: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val searchResults = mutableListOf<NoteItem>()
+            val lowerQuery = query.lowercase()
+
+            // 1. Ana Dizini Tara (Local)
+            val rootDir = localServiceHelper.getRootFolder()
+
+            // Tüm dosyaları ve klasörleri al (Recursive/Derinlemesine arama yapmayacağız, sadece 1 seviye alt klasörlere bakacağız)
+            // Eğer "Tüm iç içe klasörler" olsun dersen walk() kullanabiliriz ama şimdilik yapın 1 seviye klasör destekliyor.
+
+            val allFiles = rootDir.listFiles() ?: emptyArray()
+
+            allFiles.forEach { file ->
+                if (file.isDirectory) {
+                    // --- KLASÖR İÇİ TARAMA ---
+                    // Private Notes hariç, diğer klasörlerin içine bak
+                    if (file.name != "Private Notes") {
+                        file.listFiles()?.forEach { subFile ->
+                            if (checkFileMatches(subFile, lowerQuery)) {
+                                searchResults.add(createNoteItemFromFile(subFile, fromFolder = file.name))
+                            }
+                        }
+                    }
+                } else {
+                    // --- ANA DİZİN DOSYALARI ---
+                    if (checkFileMatches(file, lowerQuery)) {
+                        searchResults.add(createNoteItemFromFile(file, fromFolder = "Main"))
+                    }
+                }
+            }
+
+            withContext(Dispatchers.Main) {
+                // Başlığı güncelle ki kullanıcı arama yaptığını anlasın
+                tvSubtitle.text = "Results:"
+                // Listeyi güncelle
+                currentNotes = searchResults
+                notesAdapter.submitList(searchResults)
+            }
+        }
+    }
+
+    // Arama Yardımcısı: Dosya ismi veya içeriği eşleşiyor mu?
+    private fun checkFileMatches(file: File, query: String): Boolean {
+        if (!file.isFile) return false
+        if (!file.name.endsWith(".md")) return false // Sadece notları ara
+
+        // 1. İsimde Ara
+        val nameMatch = file.name.lowercase().contains(query)
+        if (nameMatch) return true
+
+        // 2. İçerikte Ara (Dosyayı okuyup bakacağız - Dikkat: Çok büyük dosyalarda yavaş olabilir)
+        try {
+            val content = file.readText().lowercase()
+            if (content.contains(query)) return true
+        } catch (e: Exception) {
+            return false
+        }
+
+        return false
+    }
+
+    // Arama Yardımcısı: Dosyadan NoteItem oluştur (Görselleştirmek için)
+    private fun createNoteItemFromFile(file: File, fromFolder: String): NoteItem {
+        // Dosyanın içeriğini burada okuyoruz (Önizleme için)
+        var previewText = ""
+        try {
+            // İlk 150 karakteri al, satır sonlarını boşlukla değiştir
+            previewText = file.readText().take(150).replace("\n", " ")
+        } catch (e: Exception) {
+            previewText = "No preview available"
+        }
+
+        // Gerçek başlığı hafızadan al, yoksa dosya adını kullan
+        val realName = titleStorage.getTitle(file.absolutePath) ?: file.name
+
+        return NoteItem(
+            name = realName, // Dosya adı yerine gerçek ismi basıyoruz
+            id = file.absolutePath,
+            isFolder = false,
+            color = colorStorage.getColor(file.absolutePath),
+            searchPreview = previewText
+        )
+    }
+}
+
+class TitleStorage(context: Context) {
+    private val prefs = context.getSharedPreferences("note_titles", Context.MODE_PRIVATE)
+
+    fun saveTitle(path: String, title: String) {
+        prefs.edit().putString(path, title).apply()
+    }
+
+    fun getTitle(path: String): String? {
+        return prefs.getString(path, null)
+    }
+
+    fun removeTitle(path: String) {
+        prefs.edit().remove(path).apply()
     }
 }

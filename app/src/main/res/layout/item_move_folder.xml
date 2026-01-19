@@ -1,34 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/cardFolderItem"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:gravity="center_vertical"
-    android:paddingVertical="12dp"
-    android:paddingHorizontal="16dp"
-    android:background="?attr/selectableItemBackground">
+    android:layout_marginBottom="8dp"
+    android:layout_marginHorizontal="4dp"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp"
+    app:cardBackgroundColor="#F5F5F5">
 
-    <ImageView
-        android:id="@+id/ivFolderIcon"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:src="@drawable/fab_menu_folder"
-        app:tint="@color/text_color"
-        android:layout_marginEnd="16dp"/>
-
-    <TextView
-        android:id="@+id/tvFolderName"
-        android:layout_width="0dp"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        tools:text="Folder Name"
-        android:text="Folder Name"
-        android:textSize="16sp"
-        android:textColor="@color/text_color"
-        android:fontFamily="@font/productsans_bold"
-        android:ellipsize="end"
-        android:maxLines="1"/>
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="16dp">
 
-</LinearLayout>
+        <FrameLayout
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/shape_circle">
+
+            <ImageView
+                android:id="@+id/ivFolderIcon"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_folder_icon"
+                app:tint="@color/text_color" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/tvFolderName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="16dp"
+            android:text="Folder Name"
+            android:textColor="@color/text_color"
+            android:textSize="16sp"
+            android:fontFamily="@font/productsans_bold" />
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

@@ -11,5 +11,6 @@ data class NoteItem(
     var isSelected: Boolean = false,
     var color: Int? = null,
     var isActive: Boolean = false,
-    var isLocked: Boolean = false
+    var isLocked: Boolean = false,
+    val searchPreview: String? = null
 )

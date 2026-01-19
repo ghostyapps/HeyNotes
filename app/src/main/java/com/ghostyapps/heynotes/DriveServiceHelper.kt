@@ -57,14 +57,72 @@ class DriveServiceHelper(private val mDriveService: Drive) {
     // 4. List Files in a specific folder
     // inside DriveServiceHelper.kt
 
-    suspend fun listFiles(folderId: String): List<File> = withContext(Dispatchers.IO) {
-        val query = "'$folderId' in parents and trashed = false"
-        val result = mDriveService.files().list()
-            .setQ(query)
-            .setFields("files(id, name, mimeType, createdTime, modifiedTime)")
-            .setOrderBy("folder, modifiedTime desc") // <--- Folders first, then Newest Modified
-            .execute()
-        return@withContext result.files
+    // 1. Bir klasördeki tüm dosyaları listeler (DosyaAdı ve ID döner)
+    suspend fun listFiles(folderId: String): List<Pair<String, String>> = withContext(Dispatchers.IO) {
+        val filesList = mutableListOf<Pair<String, String>>()
+        try {
+            // Sadece silinmemiş (.md ve .m4a) dosyaları getir
+            val query = "'$folderId' in parents and trashed = false"
+            var pageToken: String? = null
+            do {
+                val result = mDriveService.files().list()
+                    .setQ(query)
+                    .setFields("nextPageToken, files(id, name)")
+                    .setPageToken(pageToken)
+                    .execute()
+
+                for (file in result.files) {
+                    filesList.add(Pair(file.id, file.name))
+                }
+                pageToken = result.nextPageToken
+            } while (pageToken != null)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext filesList
+    }
+
+    // 2. Drive'daki bir dosyanın içeriğini metin olarak okur
+    suspend fun readFileContent(fileId: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val inputStream = mDriveService.files().get(fileId).executeMediaAsInputStream()
+            return@withContext inputStream.bufferedReader().use { it.readText() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext null
+        }
+    }
+
+    // 3. Ses dosyasını indir (Stream olarak)
+    suspend fun downloadFile(fileId: String, targetFile: java.io.File) = withContext(Dispatchers.IO) {
+        try {
+            val outputStream = java.io.FileOutputStream(targetFile)
+            mDriveService.files().get(fileId).executeMediaAndDownloadTo(outputStream)
+            outputStream.close()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+// İsimden ve ebeveyn klasörden ID bulma (Kesme işareti korumalı)
+    suspend fun findFileId(folderId: String, fileName: String): String? = withContext(Dispatchers.IO) {
+        // Kesme işareti varsa sorguyu bozmasın diye kaçış karakteri ekliyoruz
+        val safeFileName = fileName.replace("'", "\\'")
+        val query = "'$folderId' in parents and name = '$safeFileName' and trashed = false"
+
+        try {
+            val result = mDriveService.files().list()
+                .setQ(query)
+                .setFields("files(id)")
+                .execute()
+
+            if (result.files.isNotEmpty()) {
+                return@withContext result.files[0].id
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return@withContext null
     }
 
     // 5. Read File Content
@@ -80,26 +138,23 @@ class DriveServiceHelper(private val mDriveService: Drive) {
     }
 
 
-    fun moveFile(fileId: String, folderId: String) {
-        // 1. Mevcut ebeveyn klasörleri bul
-        val file = mDriveService.files().get(fileId)
-            .setFields("parents")
-            .execute()
-
+    // Dosya Taşıma (Ebeveyn Değiştirme)
+    suspend fun moveFile(fileId: String, newParentId: String) = withContext(Dispatchers.IO) {
+        // 1. Mevcut ebeveynleri bul
+        val file = mDriveService.files().get(fileId).setFields("parents").execute()
         val previousParents = StringBuilder()
-        file.parents?.forEach { parent ->
+        for (parent in file.parents) {
             previousParents.append(parent)
             previousParents.append(',')
         }
 
-        // 2. Yeni klasöre ekle, eskilerden çıkar
+        // 2. Yeni ebeveyni ekle, eskileri çıkar
         mDriveService.files().update(fileId, null)
-            .setAddParents(folderId)
+            .setAddParents(newParentId)
             .setRemoveParents(previousParents.toString())
             .setFields("id, parents")
             .execute()
     }
-
 
 
     // Update an existing note's content and title
@@ -135,5 +190,17 @@ class DriveServiceHelper(private val mDriveService: Drive) {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    // 6. Ses Dosyası Yükleme (MP4/M4A)
+    suspend fun uploadFile(folderId: String, file: java.io.File, mimeType: String): String? = withContext(Dispatchers.IO) {
+        val metadata = File()
+            .setParents(Collections.singletonList(folderId))
+            .setName(file.name)
+            .setMimeType(mimeType)
+
+        val fileContent = com.google.api.client.http.FileContent(mimeType, file)
+        val uploadedFile = mDriveService.files().create(metadata, fileContent).execute()
+        return@withContext uploadedFile.id
     }
 }
